@@ -5,6 +5,12 @@ import (
 	"fmt"
 )
 
+var (
+	ErrTransactionAlreadyProcessed = errors.New("transaction already processed")
+	ErrSenderNotFound              = errors.New("sender does not exist")
+	ErrInsufficientBalance         = errors.New("insufficient balance")
+)
+
 type Block struct {
 	Number       uint64
 	Hash         string
@@ -34,25 +40,78 @@ func (bc Blockchain) PrintBalances() {
 	}
 }
 
+func copyBalances(
+	balances map[string]uint64,
+) map[string]uint64 {
+	copied := make(map[string]uint64)
+
+	for address, balance := range balances {
+		copied[address] = balance
+	}
+
+	return copied
+}
+
+func copyProcessedTransactions(
+	processed map[string]bool,
+) map[string]bool {
+	copied := make(map[string]bool)
+
+	for hash, value := range processed {
+		copied[hash] = value
+	}
+
+	return copied
+}
+
 func (bc *Blockchain) ProcessTransaction(tx Transaction) error {
 	if bc.ProcessedTransactions[tx.Hash] {
-		return errors.New("transaction already processed")
+		return ErrTransactionAlreadyProcessed
 	}
 
 	senderBalance, exists := bc.Balances[tx.From]
 
 	if !exists {
-		return errors.New("sender does not exist")
+		return ErrSenderNotFound
 	}
 
 	if senderBalance < tx.ValueWei {
-		return errors.New("insufficient balance")
+		return ErrInsufficientBalance
 	}
 
 	bc.Balances[tx.From] -= tx.ValueWei
 	bc.Balances[tx.To] += tx.ValueWei
 
 	bc.ProcessedTransactions[tx.Hash] = true
+
+	return nil
+}
+
+func (bc *Blockchain) ProcessBlock(block Block) error {
+	tempBlockchain := Blockchain{
+		Balances: copyBalances(
+			bc.Balances,
+		),
+		ProcessedTransactions: copyProcessedTransactions(
+			bc.ProcessedTransactions,
+		),
+	}
+
+	for _, tx := range block.Transactions {
+		err := tempBlockchain.ProcessTransaction(tx)
+
+		if err != nil {
+			return fmt.Errorf(
+				"failed to process transaction %s: %w",
+				tx.Hash,
+				err,
+			)
+		}
+	}
+
+	bc.Balances = tempBlockchain.Balances
+	bc.ProcessedTransactions = tempBlockchain.ProcessedTransactions
+	bc.Blocks = append(bc.Blocks, block)
 
 	return nil
 }
