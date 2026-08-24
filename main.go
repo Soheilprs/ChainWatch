@@ -6,14 +6,13 @@ import (
 )
 
 func main() {
-	blockchain := Blockchain{
-		Blocks: []Block{},
-
-		Balances: map[string]uint64{"0xAlice": 100,
+	blockchain := NewBlockchain(
+		map[Address]uint64{
+			"0xAlice":   100,
 			"0xBob":     50,
-			"0xCharlie": 0},
-		ProcessedTransactions: map[string]bool{},
-	}
+			"0xCharlie": 0,
+		},
+	)
 
 	tx1 := Transaction{
 		Hash:     "0xtx001",
@@ -54,15 +53,13 @@ func main() {
 	}
 
 	fmt.Println("Block processed successfully")
-
 	fmt.Println()
 
 	fmt.Println("After block:")
 	blockchain.PrintBalances()
-
 	fmt.Println()
 
-	fmt.Println("Total blocks:", len(blockchain.Blocks))
+	fmt.Println("Total blocks:", blockchain.BlockCount())
 
 	tx3 := Transaction{
 		Hash:     "0xfail123",
@@ -77,13 +74,12 @@ func main() {
 		Transactions: []Transaction{
 			tx3,
 		},
-		Timestamp: 1750000000,
+		Timestamp: 1750000001,
 	}
 
 	err2 := blockchain.ProcessBlock(block2)
 
 	fmt.Println(err2)
-
 	fmt.Println(
 		errors.Is(err2, ErrInsufficientBalance),
 	)
