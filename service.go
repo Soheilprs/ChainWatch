@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 type ChainWatchService struct {
 	client     BlockchainClient
@@ -17,8 +20,10 @@ func NewChainWatchService(
 	}
 }
 
-func (s *ChainWatchService) SyncLatestBlock() error {
-	block, err := s.client.GetLatestBlock()
+func (s *ChainWatchService) SyncLatestBlock(
+	ctx context.Context,
+) error {
+	block, err := s.client.GetLatestBlock(ctx)
 
 	if err != nil {
 		return fmt.Errorf(

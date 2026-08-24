@@ -1,6 +1,10 @@
 package main
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+	"time"
+)
 
 func main() {
 	blockchain := NewBlockchain(
@@ -42,11 +46,17 @@ func main() {
 		blockchain,
 	)
 
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		2*time.Second,
+	)
+	defer cancel()
+
 	fmt.Println("Before sync:")
 	blockchain.PrintBalances()
 	fmt.Println()
 
-	err := service.SyncLatestBlock()
+	err := service.SyncLatestBlock(ctx)
 
 	if err != nil {
 		fmt.Println("Sync failed:", err)
