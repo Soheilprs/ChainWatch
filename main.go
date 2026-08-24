@@ -37,7 +37,7 @@ func main() {
 		Timestamp: 1750000000,
 	}
 
-	client := MockBlockchainClient{
+	client := &MockBlockchainClient{
 		Block: block,
 	}
 

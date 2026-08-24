@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -10,16 +11,20 @@ type BlockchainClient interface {
 }
 
 type MockBlockchainClient struct {
-	Block Block
-	Err   error
-	Delay time.Duration
+	Block        Block
+	Err          error
+	Delay        time.Duration
+	FailuresLeft int
+	Calls        int
 }
 
-var _ BlockchainClient = MockBlockchainClient{}
+var _ BlockchainClient = (*MockBlockchainClient)(nil)
 
-func (m MockBlockchainClient) GetLatestBlock(
+func (m *MockBlockchainClient) GetLatestBlock(
 	ctx context.Context,
 ) (Block, error) {
+	m.Calls++
+
 	if m.Delay > 0 {
 		select {
 		case <-time.After(m.Delay):
@@ -28,8 +33,16 @@ func (m MockBlockchainClient) GetLatestBlock(
 		}
 	}
 
-	if m.Err != nil {
-		return Block{}, m.Err
+	if m.FailuresLeft > 0 {
+		m.FailuresLeft--
+
+		if m.Err != nil {
+			return Block{}, m.Err
+		}
+
+		return Block{}, errors.New(
+			"temporary rpc failure",
+		)
 	}
 
 	return m.Block, nil
