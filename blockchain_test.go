@@ -28,7 +28,10 @@ func TestProcessTransactionSuccess(t *testing.T) {
 	err := blockchain.ProcessTransaction(tx)
 
 	if err != nil {
-		t.Fatalf("expected transaction to succeed, got error: %v", err)
+		t.Fatalf(
+			"expected transaction to succeed, got error: %v",
+			err,
+		)
 	}
 
 	if blockchain.BalanceOf("0xAlice") != 90 {
@@ -46,7 +49,9 @@ func TestProcessTransactionSuccess(t *testing.T) {
 	}
 
 	if !blockchain.IsTransactionProcessed(tx.Hash) {
-		t.Error("expected transaction to be marked as processed")
+		t.Error(
+			"expected transaction to be marked as processed",
+		)
 	}
 }
 
@@ -84,7 +89,9 @@ func TestProcessTransactionInsufficientBalance(t *testing.T) {
 	}
 
 	if blockchain.IsTransactionProcessed(tx.Hash) {
-		t.Error("failed transaction should not be marked as processed")
+		t.Error(
+			"failed transaction should not be marked as processed",
+		)
 	}
 }
 
@@ -128,12 +135,18 @@ func TestProcessTransactionDuplicate(t *testing.T) {
 	err := blockchain.ProcessTransaction(tx)
 
 	if err != nil {
-		t.Fatalf("first transaction should succeed: %v", err)
+		t.Fatalf(
+			"first transaction should succeed: %v",
+			err,
+		)
 	}
 
 	err = blockchain.ProcessTransaction(tx)
 
-	if !errors.Is(err, ErrTransactionAlreadyProcessed) {
+	if !errors.Is(
+		err,
+		ErrTransactionAlreadyProcessed,
+	) {
 		t.Fatalf(
 			"expected ErrTransactionAlreadyProcessed, got %v",
 			err,
@@ -168,17 +181,20 @@ func TestProcessTransactionNewReceiver(t *testing.T) {
 	err := blockchain.ProcessTransaction(tx)
 
 	if err != nil {
-		t.Fatalf("transaction failed: %v", err)
+		t.Fatalf(
+			"transaction failed: %v",
+			err,
+		)
 	}
 
 	if blockchain.BalanceOf("0xAlice") != 80 {
 		t.Errorf(
-			"expected Alice balance to be 80, got %d", blockchain.BalanceOf("0xAlice"),
+			"expected Alice balance to be 80, got %d",
+			blockchain.BalanceOf("0xAlice"),
 		)
 	}
 
 	if blockchain.BalanceOf("0xDave") != 20 {
-
 		t.Errorf(
 			"expected Dave balance to be 20, got %d",
 			blockchain.BalanceOf("0xDave"),
@@ -186,7 +202,9 @@ func TestProcessTransactionNewReceiver(t *testing.T) {
 	}
 
 	if !blockchain.IsTransactionProcessed(tx.Hash) {
-		t.Error("expected transaction to be marked as processed")
+		t.Error(
+			"expected transaction to be marked as processed",
+		)
 	}
 }
 
@@ -218,8 +236,11 @@ func TestProcessBlockAtomicFailure(t *testing.T) {
 
 	err := blockchain.ProcessBlock(block)
 
-	if err == nil {
-		t.Fatal("expected block processing to fail")
+	if !errors.Is(err, ErrInsufficientBalance) {
+		t.Fatalf(
+			"expected ErrInsufficientBalance, got %v",
+			err,
+		)
 	}
 
 	if blockchain.BalanceOf("0xAlice") != 100 {
@@ -244,7 +265,9 @@ func TestProcessBlockAtomicFailure(t *testing.T) {
 	}
 
 	if blockchain.IsTransactionProcessed(tx1.Hash) {
-		t.Error("tx1 should not be marked as processed after block rollback")
+		t.Error(
+			"tx1 should not be marked as processed after block rollback",
+		)
 	}
 }
 
@@ -277,7 +300,10 @@ func TestProcessBlockSuccess(t *testing.T) {
 	err := blockchain.ProcessBlock(block)
 
 	if err != nil {
-		t.Fatalf("expected block to succeed, got error: %v", err)
+		t.Fatalf(
+			"expected block to succeed, got error: %v",
+			err,
+		)
 	}
 
 	if blockchain.BalanceOf("0xAlice") != 90 {
@@ -309,11 +335,15 @@ func TestProcessBlockSuccess(t *testing.T) {
 	}
 
 	if !blockchain.IsTransactionProcessed(tx1.Hash) {
-		t.Error("expected tx1 to be marked as processed")
+		t.Error(
+			"expected tx1 to be marked as processed",
+		)
 	}
 
 	if !blockchain.IsTransactionProcessed(tx2.Hash) {
-		t.Error("expected tx2 to be marked as processed")
+		t.Error(
+			"expected tx2 to be marked as processed",
+		)
 	}
 }
 
@@ -327,7 +357,10 @@ func TestTransactionValidationEmptyHash(t *testing.T) {
 	err := tx.Validate()
 
 	if !errors.Is(err, ErrEmptyTransactionHash) {
-		t.Fatalf("expected ErrEmptyTransactionHash, got %v", err)
+		t.Fatalf(
+			"expected ErrEmptyTransactionHash, got %v",
+			err,
+		)
 	}
 }
 
@@ -376,7 +409,10 @@ func TestTransactionValidationEmptySender(t *testing.T) {
 	err := tx.Validate()
 
 	if !errors.Is(err, ErrEmptySender) {
-		t.Errorf("expected ErrEmptySender, got %v", err)
+		t.Errorf(
+			"expected ErrEmptySender, got %v",
+			err,
+		)
 	}
 }
 
@@ -390,6 +426,9 @@ func TestTransactionValidationEmptyReceiver(t *testing.T) {
 	err := tx.Validate()
 
 	if !errors.Is(err, ErrEmptyReceiver) {
-		t.Errorf("expected ErrEmptyReceiver, got %v", err)
+		t.Errorf(
+			"expected ErrEmptyReceiver, got %v",
+			err,
+		)
 	}
 }

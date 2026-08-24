@@ -57,9 +57,12 @@ func main() {
 
 	fmt.Println("After block:")
 	blockchain.PrintBalances()
-	fmt.Println()
 
-	fmt.Println("Total blocks:", blockchain.BlockCount())
+	fmt.Println()
+	fmt.Println(
+		"Total blocks:",
+		blockchain.BlockCount(),
+	)
 
 	tx3 := Transaction{
 		Hash:     "0xfail123",
@@ -80,7 +83,11 @@ func main() {
 	err2 := blockchain.ProcessBlock(block2)
 
 	fmt.Println(err2)
+
 	fmt.Println(
-		errors.Is(err2, ErrInsufficientBalance),
+		errors.Is(
+			err2,
+			ErrInsufficientBalance,
+		),
 	)
 }

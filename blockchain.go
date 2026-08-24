@@ -71,14 +71,6 @@ func (tx Transaction) Validate() error {
 	return nil
 }
 
-func (bc Blockchain) PrintBalances() {
-	fmt.Println("Wallet Balances:")
-
-	for address, balance := range bc.balances {
-		fmt.Println(address, ":", balance)
-	}
-}
-
 func (bc *Blockchain) BalanceOf(address Address) uint64 {
 	return bc.balances[address]
 }
@@ -91,6 +83,14 @@ func (bc *Blockchain) IsTransactionProcessed(
 
 func (bc *Blockchain) BlockCount() int {
 	return len(bc.blocks)
+}
+
+func (bc *Blockchain) PrintBalances() {
+	fmt.Println("Wallet Balances:")
+
+	for address, balance := range bc.balances {
+		fmt.Println(address, ":", balance)
+	}
 }
 
 func copyBalances(
