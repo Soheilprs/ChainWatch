@@ -1,9 +1,6 @@
 package main
 
-import (
-	"errors"
-	"fmt"
-)
+import "fmt"
 
 func main() {
 	blockchain := NewBlockchain(
@@ -14,80 +11,57 @@ func main() {
 		},
 	)
 
-	tx1 := Transaction{
-		Hash:     "0xtx001",
-		From:     "0xAlice",
-		To:       "0xBob",
-		ValueWei: 10,
-		GasUsed:  21000,
-	}
-
-	tx2 := Transaction{
-		Hash:     "0xtx002",
-		From:     "0xBob",
-		To:       "0xCharlie",
-		ValueWei: 20,
-		GasUsed:  21000,
-	}
-
 	block := Block{
 		Number: 19000000,
 		Hash:   "0xblock001",
 		Transactions: []Transaction{
-			tx1,
-			tx2,
+			{
+				Hash:     "0xtx001",
+				From:     "0xAlice",
+				To:       "0xBob",
+				ValueWei: 10,
+				GasUsed:  21000,
+			},
+			{
+				Hash:     "0xtx002",
+				From:     "0xBob",
+				To:       "0xCharlie",
+				ValueWei: 20,
+				GasUsed:  21000,
+			},
 		},
 		Timestamp: 1750000000,
 	}
 
-	fmt.Println("Before block:")
-	blockchain.PrintBalances()
+	client := MockBlockchainClient{
+		Block: block,
+	}
 
+	service := NewChainWatchService(
+		client,
+		blockchain,
+	)
+
+	fmt.Println("Before sync:")
+	blockchain.PrintBalances()
 	fmt.Println()
 
-	err := blockchain.ProcessBlock(block)
+	err := service.SyncLatestBlock()
 
 	if err != nil {
-		fmt.Println("Block failed:", err)
+		fmt.Println("Sync failed:", err)
 		return
 	}
 
-	fmt.Println("Block processed successfully")
+	fmt.Println("Sync successful")
 	fmt.Println()
 
-	fmt.Println("After block:")
+	fmt.Println("After sync:")
 	blockchain.PrintBalances()
 
 	fmt.Println()
 	fmt.Println(
 		"Total blocks:",
 		blockchain.BlockCount(),
-	)
-
-	tx3 := Transaction{
-		Hash:     "0xfail123",
-		From:     "0xAlice",
-		To:       "0xBob",
-		ValueWei: 999999,
-	}
-
-	block2 := Block{
-		Number: 19000001,
-		Hash:   "0xblock002",
-		Transactions: []Transaction{
-			tx3,
-		},
-		Timestamp: 1750000001,
-	}
-
-	err2 := blockchain.ProcessBlock(block2)
-
-	fmt.Println(err2)
-
-	fmt.Println(
-		errors.Is(
-			err2,
-			ErrInsufficientBalance,
-		),
 	)
 }
