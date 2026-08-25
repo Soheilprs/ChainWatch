@@ -432,3 +432,65 @@ func TestTransactionValidationEmptyReceiver(t *testing.T) {
 		)
 	}
 }
+
+func TestLatestBlockEmptyBlockchain(t *testing.T) {
+	blockchain := newTestBlockchain()
+
+	_, exists := blockchain.LatestBlock()
+
+	if exists {
+		t.Fatalf("expected exist be false but it is: %v", exists)
+	}
+}
+
+func TestLatestBlockAfterProcessing(t *testing.T) {
+	blockchain := newTestBlockchain()
+
+	block := Block{
+		Number: 1,
+		Hash:   "0xblock-success",
+		Transactions: []Transaction{
+			{
+				Hash:     "0xtx201",
+				From:     "0xAlice",
+				To:       "0xBob",
+				ValueWei: 10,
+			},
+			{
+				Hash:     "0xtx202",
+				From:     "0xBob",
+				To:       "0xCharlie",
+				ValueWei: 20,
+			},
+		},
+	}
+
+	err := blockchain.ProcessBlock(block)
+
+	if err != nil {
+		t.Fatalf(
+			"expected block to succeed, got error: %v",
+			err,
+		)
+	}
+
+	latestBlock, exists := blockchain.LatestBlock()
+
+	if !exists {
+		t.Fatal("expected latest block to exist")
+	}
+
+	if latestBlock.Hash != "0xblock-success" {
+		t.Fatalf(
+			"expected hash to be 0xblock-success, got %v",
+			latestBlock.Hash,
+		)
+	}
+
+	if latestBlock.Number != 1 {
+		t.Fatalf(
+			"expected block number to be 1, got %d",
+			latestBlock.Number,
+		)
+	}
+}

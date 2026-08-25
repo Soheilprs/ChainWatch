@@ -3,75 +3,67 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 )
 
 func main() {
-	blockchain := NewBlockchain(
-		map[Address]uint64{
-			"0xAlice":   100,
-			"0xBob":     50,
-			"0xCharlie": 0,
-		},
+	rpcURL := os.Getenv("ETH_RPC_URL")
+
+	if rpcURL == "" {
+		fmt.Println("ETH_RPC_URL is not set")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		10*time.Second,
+	)
+	defer cancel()
+
+	client, err := NewEthereumClient(
+		ctx,
+		rpcURL,
 	)
 
-	block := Block{
-		Number: 19000000,
-		Hash:   "0xblock001",
-		Transactions: []Transaction{
-			{
-				Hash:     "0xtx001",
-				From:     "0xAlice",
-				To:       "0xBob",
-				ValueWei: 10,
-				GasUsed:  21000,
-			},
-			{
-				Hash:     "0xtx002",
-				From:     "0xBob",
-				To:       "0xCharlie",
-				ValueWei: 20,
-				GasUsed:  21000,
-			},
-		},
-		Timestamp: 1750000000,
+	if err != nil {
+		fmt.Println(
+			"Failed to create Ethereum client:",
+			err,
+		)
+		return
 	}
 
-	client := &MockBlockchainClient{
-		Block: block,
-	}
+	defer client.Close()
+
+	blockchain := NewBlockchain(
+		map[Address]uint64{},
+	)
 
 	service := NewChainWatchService(
 		client,
 		blockchain,
 	)
 
-	ctx, cancel := context.WithTimeout(
-		context.Background(),
-		2*time.Second,
-	)
-	defer cancel()
-
-	fmt.Println("Before sync:")
-	blockchain.PrintBalances()
-	fmt.Println()
-
-	err := service.SyncLatestBlock(ctx)
+	err = service.SyncLatestBlock(ctx)
 
 	if err != nil {
-		fmt.Println("Sync failed:", err)
+		fmt.Println(
+			"Sync failed:",
+			err,
+		)
 		return
 	}
 
-	fmt.Println("Sync successful")
-	fmt.Println()
+	block, exists := blockchain.LatestBlock()
 
-	fmt.Println("After sync:")
-	blockchain.PrintBalances()
+	if !exists {
+		fmt.Println("No block was processed")
+		return
+	}
 
-	fmt.Println()
-	fmt.Println(
-		"Total blocks:",
-		blockchain.BlockCount(),
-	)
+	fmt.Println("Ethereum block synchronized")
+	fmt.Println("Block number:", block.Number)
+	fmt.Println("Block hash:", block.Hash)
+	fmt.Println("Timestamp:", block.Timestamp)
 }

@@ -10,14 +10,28 @@ type TransactionHash string
 type BlockHash string
 
 var (
-	ErrTransactionAlreadyProcessed = errors.New("transaction already processed")
-	ErrSenderNotFound              = errors.New("sender does not exist")
-	ErrInsufficientBalance         = errors.New("insufficient balance")
+	ErrTransactionAlreadyProcessed = errors.New(
+		"transaction already processed",
+	)
+	ErrSenderNotFound = errors.New(
+		"sender does not exist",
+	)
+	ErrInsufficientBalance = errors.New(
+		"insufficient balance",
+	)
 
-	ErrEmptyTransactionHash = errors.New("transaction hash is empty")
-	ErrEmptySender          = errors.New("sender is empty")
-	ErrEmptyReceiver        = errors.New("receiver is empty")
-	ErrZeroValue            = errors.New("transaction value must be greater than zero")
+	ErrEmptyTransactionHash = errors.New(
+		"transaction hash is empty",
+	)
+	ErrEmptySender = errors.New(
+		"sender is empty",
+	)
+	ErrEmptyReceiver = errors.New(
+		"receiver is empty",
+	)
+	ErrZeroValue = errors.New(
+		"transaction value must be greater than zero",
+	)
 )
 
 type Block struct {
@@ -45,8 +59,10 @@ func NewBlockchain(
 	initialBalances map[Address]uint64,
 ) *Blockchain {
 	return &Blockchain{
-		blocks:                []Block{},
-		balances:              copyBalances(initialBalances),
+		blocks: []Block{},
+		balances: copyBalances(
+			initialBalances,
+		),
 		processedTransactions: map[TransactionHash]bool{},
 	}
 }
@@ -71,7 +87,9 @@ func (tx Transaction) Validate() error {
 	return nil
 }
 
-func (bc *Blockchain) BalanceOf(address Address) uint64 {
+func (bc *Blockchain) BalanceOf(
+	address Address,
+) uint64 {
 	return bc.balances[address]
 }
 
@@ -83,6 +101,21 @@ func (bc *Blockchain) IsTransactionProcessed(
 
 func (bc *Blockchain) BlockCount() int {
 	return len(bc.blocks)
+}
+
+func (bc *Blockchain) LatestBlock() (Block, bool) {
+	if len(bc.blocks) == 0 {
+		return Block{}, false
+	}
+
+	block := bc.blocks[len(bc.blocks)-1]
+
+	block.Transactions = append(
+		[]Transaction(nil),
+		block.Transactions...,
+	)
+
+	return block, true
 }
 
 func (bc *Blockchain) PrintBalances() {
@@ -117,7 +150,9 @@ func copyProcessedTransactions(
 	return copied
 }
 
-func (bc *Blockchain) ProcessTransaction(tx Transaction) error {
+func (bc *Blockchain) ProcessTransaction(
+	tx Transaction,
+) error {
 	if err := tx.Validate(); err != nil {
 		return err
 	}
@@ -144,7 +179,9 @@ func (bc *Blockchain) ProcessTransaction(tx Transaction) error {
 	return nil
 }
 
-func (bc *Blockchain) ProcessBlock(block Block) error {
+func (bc *Blockchain) ProcessBlock(
+	block Block,
+) error {
 	tempBlockchain := Blockchain{
 		balances: copyBalances(
 			bc.balances,
@@ -167,8 +204,13 @@ func (bc *Blockchain) ProcessBlock(block Block) error {
 	}
 
 	bc.balances = tempBlockchain.balances
-	bc.processedTransactions = tempBlockchain.processedTransactions
-	bc.blocks = append(bc.blocks, block)
+	bc.processedTransactions =
+		tempBlockchain.processedTransactions
+
+	bc.blocks = append(
+		bc.blocks,
+		block,
+	)
 
 	return nil
 }
