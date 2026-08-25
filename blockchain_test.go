@@ -494,3 +494,21 @@ func TestLatestBlockAfterProcessing(t *testing.T) {
 		)
 	}
 }
+
+func TestObservedBlockTransactionCount(t *testing.T) {
+	block := ObservedBlock{
+		Transactions: []ObservedTransaction{
+			{
+				Hash: "0xtx1",
+			},
+			{
+				Hash: "0xtx2",
+			},
+		},
+	}
+
+	t.Fatalf(
+		"expected 2 transactions, got %d",
+		block.TransactionCount(),
+	)
+}

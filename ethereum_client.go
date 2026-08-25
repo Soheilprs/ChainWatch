@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math/big"
 
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -54,6 +55,83 @@ func (e *EthereumClient) GetLatestBlock(
 		Hash:         BlockHash(header.Hash().Hex()),
 		Timestamp:    header.Time,
 		Transactions: []Transaction{},
+	}, nil
+}
+
+func (e *EthereumClient) GetLatestObservedBlock(
+	ctx context.Context,
+) (ObservedBlock, error) {
+	block, err := e.client.BlockByNumber(
+		ctx,
+		nil,
+	)
+
+	if err != nil {
+		return ObservedBlock{}, fmt.Errorf(
+			"failed to fetch latest ethereum block: %w",
+			err,
+		)
+	}
+
+	transactions := make(
+		[]ObservedTransaction,
+		0,
+		len(block.Transactions()),
+	)
+
+	for index, tx := range block.Transactions() {
+		sender, err := e.client.TransactionSender(
+			ctx,
+			tx,
+			block.Hash(),
+			uint(index),
+		)
+
+		if err != nil {
+			return ObservedBlock{}, fmt.Errorf(
+				"failed to recover sender for transaction %s: %w",
+				tx.Hash().Hex(),
+				err,
+			)
+		}
+
+		var to *Address
+
+		if tx.To() != nil {
+			address := Address(
+				tx.To().Hex(),
+			)
+
+			to = &address
+		}
+
+		observedTx := ObservedTransaction{
+			Hash: TransactionHash(
+				tx.Hash().Hex(),
+			),
+			From: Address(
+				sender.Hex(),
+			),
+			To: to,
+			ValueWei: new(big.Int).Set(
+				tx.Value(),
+			),
+			Nonce:    tx.Nonce(),
+			GasLimit: tx.Gas(),
+			Type:     tx.Type(),
+		}
+
+		transactions = append(
+			transactions,
+			observedTx,
+		)
+	}
+
+	return ObservedBlock{
+		Number:       block.NumberU64(),
+		Hash:         BlockHash(block.Hash().Hex()),
+		Timestamp:    block.Time(),
+		Transactions: transactions,
 	}, nil
 }
 
