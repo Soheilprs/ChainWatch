@@ -171,3 +171,35 @@ func TestDecodeERC20TransferInvalidData(t *testing.T) {
 	}
 
 }
+
+func TestERC721TransferIsNotERC20Transfer(
+	t *testing.T,
+) {
+	from :=
+		"0x1111111111111111111111111111111111111111"
+
+	to :=
+		"0x2222222222222222222222222222222222222222"
+
+	tokenID := big.NewInt(123)
+
+	log := ObservedLog{
+		Topics: []string{
+			erc20TransferTopic.Hex(),
+			addressTopic(from),
+			addressTopic(to),
+			common.BytesToHash(
+				common.LeftPadBytes(
+					tokenID.Bytes(),
+					32,
+				),
+			).Hex(),
+		},
+	}
+
+	if IsERC20TransferLog(log) {
+		t.Fatal(
+			"expected ERC721 Transfer log not to be classified as ERC20",
+		)
+	}
+}

@@ -3,10 +3,13 @@ package main
 import "math/big"
 
 type ObservedLog struct {
-	Address Address
-	Topics  []string
-	Data    []byte
-	Index   uint
+	Address         Address
+	Topics          []string
+	Data            []byte
+	Index           uint
+	TransactionHash TransactionHash
+	BlockNumber     uint64
+	Removed         bool
 }
 
 type ObservedReceipt struct {

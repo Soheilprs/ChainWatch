@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"math/big"
 
+	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
@@ -136,6 +138,40 @@ func (e *EthereumClient) GetLatestObservedBlock(
 	}, nil
 }
 
+func observedLogFromEthereumLog(
+	log types.Log,
+) ObservedLog {
+	topics := make(
+		[]string,
+		0,
+		len(log.Topics),
+	)
+
+	for _, topic := range log.Topics {
+		topics = append(
+			topics,
+			topic.Hex(),
+		)
+	}
+
+	return ObservedLog{
+		Address: Address(
+			log.Address.Hex(),
+		),
+		Topics: topics,
+		Data: append(
+			[]byte(nil),
+			log.Data...,
+		),
+		Index: log.Index,
+		TransactionHash: TransactionHash(
+			log.TxHash.Hex(),
+		),
+		BlockNumber: log.BlockNumber,
+		Removed:     log.Removed,
+	}
+}
+
 func (e *EthereumClient) GetTransactionReceipt(
 	ctx context.Context,
 	hash TransactionHash,
@@ -160,32 +196,11 @@ func (e *EthereumClient) GetTransactionReceipt(
 	)
 
 	for _, log := range receipt.Logs {
-		topics := make(
-			[]string,
-			0,
-			len(log.Topics),
-		)
-
-		for _, topic := range log.Topics {
-			topics = append(
-				topics,
-				topic.Hex(),
-			)
-		}
-
 		logs = append(
 			logs,
-			ObservedLog{
-				Address: Address(
-					log.Address.Hex(),
-				),
-				Topics: topics,
-				Data: append(
-					[]byte(nil),
-					log.Data...,
-				),
-				Index: log.Index,
-			},
+			observedLogFromEthereumLog(
+				*log,
+			),
 		)
 	}
 
@@ -216,6 +231,75 @@ func (e *EthereumClient) GetTransactionReceipt(
 		EffectiveGasPrice: effectiveGasPrice,
 		ContractAddress:   contractAddress,
 		Logs:              logs,
+	}, nil
+}
+
+func (e *EthereumClient) GetERC20TransfersByBlock(
+	ctx context.Context,
+	block ObservedBlock,
+) (BlockTransferIndex, error) {
+	blockHash := common.HexToHash(
+		string(block.Hash),
+	)
+
+	logs, err := e.client.FilterLogs(
+		ctx,
+		ethereum.FilterQuery{
+			BlockHash: &blockHash,
+			Topics: [][]common.Hash{
+				{
+					erc20TransferTopic,
+				},
+			},
+		},
+	)
+
+	if err != nil {
+		return BlockTransferIndex{}, fmt.Errorf(
+			"failed to fetch ERC20 transfer logs for block %s: %w",
+			block.Hash,
+			err,
+		)
+	}
+
+	transfers := make(
+		[]ERC20Transfer,
+		0,
+		len(logs),
+	)
+
+	for _, ethereumLog := range logs {
+		log := observedLogFromEthereumLog(
+			ethereumLog,
+		)
+
+		if !IsERC20TransferLog(log) {
+			continue
+		}
+
+		transfer, err := DecodeERC20Transfer(
+			log,
+			log.TransactionHash,
+		)
+
+		if err != nil {
+			return BlockTransferIndex{}, fmt.Errorf(
+				"failed to decode ERC20 transfer log %d: %w",
+				log.Index,
+				err,
+			)
+		}
+
+		transfers = append(
+			transfers,
+			transfer,
+		)
+	}
+
+	return BlockTransferIndex{
+		BlockNumber: block.Number,
+		BlockHash:   block.Hash,
+		Transfers:   transfers,
 	}, nil
 }
 

@@ -220,4 +220,65 @@ func main() {
 			)
 		}
 	}
+
+	transferIndex, err :=
+		client.GetERC20TransfersByBlock(
+			ctx,
+			observedBlock,
+		)
+
+	if err != nil {
+		fmt.Println(
+			"Failed to index ERC20 transfers:",
+			err,
+		)
+		return
+	}
+
+	fmt.Println()
+	fmt.Println("ERC-20 Block Index")
+	fmt.Println(
+		"Block:",
+		transferIndex.BlockHash,
+	)
+	fmt.Println(
+		"Transfer count:",
+		transferIndex.TransferCount(),
+	)
+
+	transferLimit := 10
+
+	if transferIndex.TransferCount() < transferLimit {
+		transferLimit = transferIndex.TransferCount()
+	}
+
+	for i := 0; i < transferLimit; i++ {
+		transfer := transferIndex.Transfers[i]
+
+		fmt.Println()
+		fmt.Println(
+			"Transfer:",
+			i+1,
+		)
+		fmt.Println(
+			"Token:",
+			transfer.Token,
+		)
+		fmt.Println(
+			"From:",
+			transfer.From,
+		)
+		fmt.Println(
+			"To:",
+			transfer.To,
+		)
+		fmt.Println(
+			"Amount:",
+			transfer.Value.String(),
+		)
+		fmt.Println(
+			"Transaction:",
+			transfer.TransactionHash,
+		)
+	}
 }
