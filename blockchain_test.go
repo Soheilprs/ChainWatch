@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"math/big"
 	"testing"
 )
 
@@ -507,8 +508,45 @@ func TestObservedBlockTransactionCount(t *testing.T) {
 		},
 	}
 
-	t.Fatalf(
-		"expected 2 transactions, got %d",
-		block.TransactionCount(),
-	)
+	if block.TransactionCount() != 2 {
+
+		t.Fatalf(
+			"expected 2 transactions, got %d",
+			block.TransactionCount(),
+		)
+	}
+}
+
+func TestObservedReceiptLogCount(t *testing.T) {
+	receipt := ObservedReceipt{
+		Logs: []ObservedLog{
+			{},
+			{},
+		},
+	}
+
+	if receipt.LogCount() != 2 {
+		t.Fatalf(
+			"expected 2 logs, got %d",
+			receipt.LogCount(),
+		)
+	}
+}
+
+func TestObservedReceiptFeeWei(t *testing.T) {
+	receipt := ObservedReceipt{
+		GasUsed: 21000,
+		EffectiveGasPrice: big.NewInt(
+			2,
+		),
+	}
+
+	fee := receipt.FeeWei()
+
+	if fee.Cmp(big.NewInt(42000)) != 0 {
+		t.Fatalf(
+			"expected fee 42000, got %s",
+			fee.String(),
+		)
+	}
 }

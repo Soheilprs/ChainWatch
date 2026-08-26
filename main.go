@@ -130,5 +130,54 @@ func main() {
 			"Type:",
 			tx.Type,
 		)
+
+		receipt, err :=
+			client.GetTransactionReceipt(
+				ctx,
+				tx.Hash,
+			)
+
+		if err != nil {
+			fmt.Println(
+				"Receipt error:",
+				err,
+			)
+
+			continue
+		}
+
+		fmt.Println(
+			"Gas used:",
+			receipt.GasUsed,
+		)
+
+		fmt.Println(
+			"Successful:",
+			receipt.Successful(),
+		)
+
+		fmt.Println(
+			"Log count:",
+			receipt.LogCount(),
+		)
+
+		if receipt.EffectiveGasPrice != nil {
+			fmt.Println(
+				"Effective gas price:",
+				receipt.EffectiveGasPrice.String(),
+			)
+
+			fmt.Println(
+				"Transaction fee Wei:",
+				receipt.FeeWei().String(),
+			)
+		}
+
+		if receipt.ContractAddress != nil {
+			fmt.Println(
+				"Created contract:",
+				*receipt.ContractAddress,
+			)
+		}
 	}
 }

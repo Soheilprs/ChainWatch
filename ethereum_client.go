@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
@@ -132,6 +133,89 @@ func (e *EthereumClient) GetLatestObservedBlock(
 		Hash:         BlockHash(block.Hash().Hex()),
 		Timestamp:    block.Time(),
 		Transactions: transactions,
+	}, nil
+}
+
+func (e *EthereumClient) GetTransactionReceipt(
+	ctx context.Context,
+	hash TransactionHash,
+) (ObservedReceipt, error) {
+	receipt, err := e.client.TransactionReceipt(
+		ctx,
+		common.HexToHash(string(hash)),
+	)
+
+	if err != nil {
+		return ObservedReceipt{}, fmt.Errorf(
+			"failed to fetch receipt for transaction %s: %w",
+			hash,
+			err,
+		)
+	}
+
+	logs := make(
+		[]ObservedLog,
+		0,
+		len(receipt.Logs),
+	)
+
+	for _, log := range receipt.Logs {
+		topics := make(
+			[]string,
+			0,
+			len(log.Topics),
+		)
+
+		for _, topic := range log.Topics {
+			topics = append(
+				topics,
+				topic.Hex(),
+			)
+		}
+
+		logs = append(
+			logs,
+			ObservedLog{
+				Address: Address(
+					log.Address.Hex(),
+				),
+				Topics: topics,
+				Data: append(
+					[]byte(nil),
+					log.Data...,
+				),
+				Index: log.Index,
+			},
+		)
+	}
+
+	var contractAddress *Address
+
+	if receipt.ContractAddress != (common.Address{}) {
+		address := Address(
+			receipt.ContractAddress.Hex(),
+		)
+
+		contractAddress = &address
+	}
+
+	var effectiveGasPrice *big.Int
+
+	if receipt.EffectiveGasPrice != nil {
+		effectiveGasPrice = new(big.Int).Set(
+			receipt.EffectiveGasPrice,
+		)
+	}
+
+	return ObservedReceipt{
+		TransactionHash: TransactionHash(
+			receipt.TxHash.Hex(),
+		),
+		Status:            receipt.Status,
+		GasUsed:           receipt.GasUsed,
+		EffectiveGasPrice: effectiveGasPrice,
+		ContractAddress:   contractAddress,
+		Logs:              logs,
 	}, nil
 }
 
