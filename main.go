@@ -142,7 +142,6 @@ func main() {
 				"Receipt error:",
 				err,
 			)
-
 			continue
 		}
 
@@ -177,6 +176,47 @@ func main() {
 			fmt.Println(
 				"Created contract:",
 				*receipt.ContractAddress,
+			)
+		}
+
+		for _, log := range receipt.Logs {
+			if !IsERC20TransferLog(log) {
+				continue
+			}
+
+			transfer, err :=
+				DecodeERC20Transfer(
+					log,
+					tx.Hash,
+				)
+
+			if err != nil {
+				fmt.Println(
+					"Transfer decode error:",
+					err,
+				)
+				continue
+			}
+
+			fmt.Println()
+			fmt.Println(
+				"  ERC-20 Transfer",
+			)
+			fmt.Println(
+				"  Token:",
+				transfer.Token,
+			)
+			fmt.Println(
+				"  From:",
+				transfer.From,
+			)
+			fmt.Println(
+				"  To:",
+				transfer.To,
+			)
+			fmt.Println(
+				"  Amount:",
+				transfer.Value.String(),
 			)
 		}
 	}
