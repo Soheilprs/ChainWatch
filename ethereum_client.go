@@ -76,66 +76,10 @@ func (e *EthereumClient) GetLatestObservedBlock(
 		)
 	}
 
-	transactions := make(
-		[]ObservedTransaction,
-		0,
-		len(block.Transactions()),
+	return e.observedBlockFromEthereumBlock(
+		ctx,
+		block,
 	)
-
-	for index, tx := range block.Transactions() {
-		sender, err := e.client.TransactionSender(
-			ctx,
-			tx,
-			block.Hash(),
-			uint(index),
-		)
-
-		if err != nil {
-			return ObservedBlock{}, fmt.Errorf(
-				"failed to recover sender for transaction %s: %w",
-				tx.Hash().Hex(),
-				err,
-			)
-		}
-
-		var to *Address
-
-		if tx.To() != nil {
-			address := Address(
-				tx.To().Hex(),
-			)
-
-			to = &address
-		}
-
-		observedTx := ObservedTransaction{
-			Hash: TransactionHash(
-				tx.Hash().Hex(),
-			),
-			From: Address(
-				sender.Hex(),
-			),
-			To: to,
-			ValueWei: new(big.Int).Set(
-				tx.Value(),
-			),
-			Nonce:    tx.Nonce(),
-			GasLimit: tx.Gas(),
-			Type:     tx.Type(),
-		}
-
-		transactions = append(
-			transactions,
-			observedTx,
-		)
-	}
-
-	return ObservedBlock{
-		Number:       block.NumberU64(),
-		Hash:         BlockHash(block.Hash().Hex()),
-		Timestamp:    block.Time(),
-		Transactions: transactions,
-	}, nil
 }
 
 func observedLogFromEthereumLog(
@@ -305,4 +249,98 @@ func (e *EthereumClient) GetERC20TransfersByBlock(
 
 func (e *EthereumClient) Close() {
 	e.client.Close()
+}
+
+func (e *EthereumClient) observedBlockFromEthereumBlock(
+	ctx context.Context,
+	block *types.Block,
+) (ObservedBlock, error) {
+	transactions := make(
+		[]ObservedTransaction,
+		0,
+		len(block.Transactions()),
+	)
+
+	for index, tx := range block.Transactions() {
+		sender, err :=
+			e.client.TransactionSender(
+				ctx,
+				tx,
+				block.Hash(),
+				uint(index),
+			)
+
+		if err != nil {
+			return ObservedBlock{}, fmt.Errorf(
+				"failed to recover sender for transaction %s: %w",
+				tx.Hash().Hex(),
+				err,
+			)
+		}
+
+		var to *Address
+
+		if tx.To() != nil {
+			address := Address(
+				tx.To().Hex(),
+			)
+
+			to = &address
+		}
+
+		transactions = append(
+			transactions,
+			ObservedTransaction{
+				Hash: TransactionHash(
+					tx.Hash().Hex(),
+				),
+				From: Address(
+					sender.Hex(),
+				),
+				To: to,
+				ValueWei: new(big.Int).Set(
+					tx.Value(),
+				),
+				Nonce:    tx.Nonce(),
+				GasLimit: tx.Gas(),
+				Type:     tx.Type(),
+			},
+		)
+	}
+
+	return ObservedBlock{
+		Number: block.NumberU64(),
+		Hash: BlockHash(
+			block.Hash().Hex(),
+		),
+		Timestamp:    block.Time(),
+		Transactions: transactions,
+	}, nil
+}
+
+func (e *EthereumClient) GetObservedBlockByNumber(
+	ctx context.Context,
+	blockNumber uint64,
+) (ObservedBlock, error) {
+	number := new(big.Int).SetUint64(
+		blockNumber,
+	)
+
+	block, err := e.client.BlockByNumber(
+		ctx,
+		number,
+	)
+
+	if err != nil {
+		return ObservedBlock{}, fmt.Errorf(
+			"failed to fetch ethereum block %d: %w",
+			blockNumber,
+			err,
+		)
+	}
+
+	return e.observedBlockFromEthereumBlock(
+		ctx,
+		block,
+	)
 }

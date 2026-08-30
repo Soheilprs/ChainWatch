@@ -17,7 +17,7 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(
 		context.Background(),
-		10*time.Second,
+		30*time.Second,
 	)
 	defer cancel()
 
@@ -202,24 +202,32 @@ func main() {
 			fmt.Println(
 				"  ERC-20 Transfer",
 			)
+
 			fmt.Println(
 				"  Token:",
 				transfer.Token,
 			)
+
 			fmt.Println(
 				"  From:",
 				transfer.From,
 			)
+
 			fmt.Println(
 				"  To:",
 				transfer.To,
 			)
+
 			fmt.Println(
 				"  Amount:",
 				transfer.Value.String(),
 			)
 		}
 	}
+
+	// --------------------------------------------------
+	// Full block ERC-20 transfer indexing
+	// --------------------------------------------------
 
 	transferIndex, err :=
 		client.GetERC20TransfersByBlock(
@@ -237,10 +245,12 @@ func main() {
 
 	fmt.Println()
 	fmt.Println("ERC-20 Block Index")
+
 	fmt.Println(
 		"Block:",
 		transferIndex.BlockHash,
 	)
+
 	fmt.Println(
 		"Transfer count:",
 		transferIndex.TransferCount(),
@@ -256,29 +266,96 @@ func main() {
 		transfer := transferIndex.Transfers[i]
 
 		fmt.Println()
+
 		fmt.Println(
 			"Transfer:",
 			i+1,
 		)
+
 		fmt.Println(
 			"Token:",
 			transfer.Token,
 		)
+
 		fmt.Println(
 			"From:",
 			transfer.From,
 		)
+
 		fmt.Println(
 			"To:",
 			transfer.To,
 		)
+
 		fmt.Println(
 			"Amount:",
 			transfer.Value.String(),
 		)
+
 		fmt.Println(
 			"Transaction:",
 			transfer.TransactionHash,
+		)
+	}
+
+	// --------------------------------------------------
+	// Sequential block indexing
+	// --------------------------------------------------
+
+	startBlock := uint64(0)
+
+	if observedBlock.Number >= 2 {
+		startBlock = observedBlock.Number - 2
+	}
+
+	checkpointStore :=
+		NewMemoryCheckpointStore()
+
+	indexer := NewSequentialIndexer(
+		client,
+		checkpointStore,
+	)
+
+	indexes, err := indexer.IndexRange(
+		ctx,
+		startBlock,
+		observedBlock.Number,
+	)
+
+	if err != nil {
+		fmt.Println(
+			"Sequential indexing failed:",
+			err,
+		)
+		return
+	}
+
+	fmt.Println()
+	fmt.Println("Sequential Block Indexing")
+
+	for _, index := range indexes {
+		fmt.Printf(
+			"Block %d: %d ERC-20 transfers\n",
+			index.BlockNumber,
+			index.TransferCount(),
+		)
+	}
+
+	checkpoint, checkpointExists, err :=
+		checkpointStore.Load(ctx)
+
+	if err != nil {
+		fmt.Println(
+			"Failed to load checkpoint:",
+			err,
+		)
+		return
+	}
+
+	if checkpointExists {
+		fmt.Println(
+			"Checkpoint:",
+			checkpoint,
 		)
 	}
 }
