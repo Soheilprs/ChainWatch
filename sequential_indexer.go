@@ -27,6 +27,8 @@ type SequentialIndexer struct {
 	checkpoints CheckpointStore
 }
 
+var _ RangeIndexer = (*SequentialIndexer)(nil)
+
 func NewSequentialIndexer(
 	client TransferBlockClient,
 	checkpoints CheckpointStore,
@@ -58,12 +60,15 @@ func (i *SequentialIndexer) IndexRange(
 		)
 	}
 
-	if exists && checkpoint >= startBlock {
-		if checkpoint >= endBlock {
+	if exists &&
+		checkpoint.Number >= startBlock {
+
+		if checkpoint.Number >= endBlock {
 			return []BlockTransferIndex{}, nil
 		}
 
-		nextBlock = checkpoint + 1
+		nextBlock =
+			checkpoint.Number + 1
 	}
 
 	results := make(
@@ -71,8 +76,7 @@ func (i *SequentialIndexer) IndexRange(
 		0,
 	)
 
-	for blockNumber := nextBlock; blockNumber <= endBlock; blockNumber++ {
-
+	for blockNumber := nextBlock; ; blockNumber++ {
 		block, err :=
 			i.client.GetObservedBlockByNumber(
 				ctx,
@@ -103,7 +107,10 @@ func (i *SequentialIndexer) IndexRange(
 
 		err = i.checkpoints.Save(
 			ctx,
-			blockNumber,
+			BlockCheckpoint{
+				Number: block.Number,
+				Hash:   block.Hash,
+			},
 		)
 
 		if err != nil {
@@ -118,6 +125,10 @@ func (i *SequentialIndexer) IndexRange(
 			results,
 			index,
 		)
+
+		if blockNumber == endBlock {
+			break
+		}
 	}
 
 	return results, nil

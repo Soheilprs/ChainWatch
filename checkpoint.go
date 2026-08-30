@@ -2,20 +2,25 @@ package main
 
 import "context"
 
+type BlockCheckpoint struct {
+	Number uint64
+	Hash   BlockHash
+}
+
 type CheckpointStore interface {
 	Load(
 		ctx context.Context,
-	) (uint64, bool, error)
+	) (BlockCheckpoint, bool, error)
 
 	Save(
 		ctx context.Context,
-		blockNumber uint64,
+		checkpoint BlockCheckpoint,
 	) error
 }
 
 type MemoryCheckpointStore struct {
-	blockNumber uint64
-	exists      bool
+	checkpoint BlockCheckpoint
+	exists     bool
 }
 
 var _ CheckpointStore = (*MemoryCheckpointStore)(nil)
@@ -26,27 +31,23 @@ func NewMemoryCheckpointStore() *MemoryCheckpointStore {
 
 func (s *MemoryCheckpointStore) Load(
 	ctx context.Context,
-) (uint64, bool, error) {
-	select {
-	case <-ctx.Done():
-		return 0, false, ctx.Err()
-	default:
+) (BlockCheckpoint, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return BlockCheckpoint{}, false, err
 	}
 
-	return s.blockNumber, s.exists, nil
+	return s.checkpoint, s.exists, nil
 }
 
 func (s *MemoryCheckpointStore) Save(
 	ctx context.Context,
-	blockNumber uint64,
+	checkpoint BlockCheckpoint,
 ) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
-	s.blockNumber = blockNumber
+	s.checkpoint = checkpoint
 	s.exists = true
 
 	return nil

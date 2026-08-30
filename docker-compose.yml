@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: chainwatch-postgres
+    environment:
+      POSTGRES_USER: chainwatch
+      POSTGRES_PASSWORD: chainwatch
+      POSTGRES_DB: chainwatch
+    ports:
+      - "5432:5432"
+    volumes:
+      - chainwatch_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  chainwatch_postgres_data:

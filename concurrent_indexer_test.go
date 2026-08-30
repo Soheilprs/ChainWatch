@@ -53,7 +53,8 @@ func (m *MockConcurrentTransferBlockClient) GetERC20TransfersByBlock(
 		m.mu.Unlock()
 	}()
 
-	delay := m.Delays[block.Number]
+	delay :=
+		m.Delays[block.Number]
 
 	if delay > 0 {
 		select {
@@ -198,10 +199,17 @@ func TestConcurrentRangeIndexerProcessesBlocksConcurrently(
 		)
 	}
 
-	if checkpoint != 102 {
+	if checkpoint.Number != 102 {
 		t.Fatalf(
-			"expected checkpoint 102, got %d",
-			checkpoint,
+			"expected checkpoint number 102, got %d",
+			checkpoint.Number,
+		)
+	}
+
+	if checkpoint.Hash != "0x102" {
+		t.Fatalf(
+			"expected checkpoint hash 0x102, got %s",
+			checkpoint.Hash,
 		)
 	}
 }
@@ -250,7 +258,10 @@ func TestConcurrentRangeIndexerDoesNotAdvancePastFailure(
 
 	err := checkpoints.Save(
 		ctx,
-		99,
+		BlockCheckpoint{
+			Number: 99,
+			Hash:   "0x99",
+		},
 	)
 
 	if err != nil {
@@ -295,10 +306,17 @@ func TestConcurrentRangeIndexerDoesNotAdvancePastFailure(
 		)
 	}
 
-	if checkpoint != 100 {
+	if checkpoint.Number != 100 {
 		t.Fatalf(
 			"expected checkpoint to remain at 100, got %d",
-			checkpoint,
+			checkpoint.Number,
+		)
+	}
+
+	if checkpoint.Hash != "0x100" {
+		t.Fatalf(
+			"expected checkpoint hash 0x100, got %s",
+			checkpoint.Hash,
 		)
 	}
 }

@@ -127,10 +127,17 @@ func TestContinuousIndexerRunCycle(
 		)
 	}
 
-	if checkpoint != 102 {
+	if checkpoint.Number != 102 {
 		t.Fatalf(
-			"expected checkpoint 102, got %d",
-			checkpoint,
+			"expected checkpoint number 102, got %d",
+			checkpoint.Number,
+		)
+	}
+
+	if checkpoint.Hash != "0x102" {
+		t.Fatalf(
+			"expected checkpoint hash 0x102, got %s",
+			checkpoint.Hash,
 		)
 	}
 }
@@ -176,7 +183,10 @@ func TestContinuousIndexerRunCycleResumes(
 
 	err := checkpoints.Save(
 		ctx,
-		101,
+		BlockCheckpoint{
+			Number: 101,
+			Hash:   "0x101",
+		},
 	)
 
 	if err != nil {
@@ -235,6 +245,36 @@ func TestContinuousIndexerRunCycleResumes(
 		t.Fatalf(
 			"expected second fetched block 103, got %d",
 			client.FetchedBlocks[1],
+		)
+	}
+
+	checkpoint, exists, err :=
+		checkpoints.Load(ctx)
+
+	if err != nil {
+		t.Fatalf(
+			"expected checkpoint load to succeed, got %v",
+			err,
+		)
+	}
+
+	if !exists {
+		t.Fatal(
+			"expected checkpoint to exist",
+		)
+	}
+
+	if checkpoint.Number != 103 {
+		t.Fatalf(
+			"expected checkpoint number 103, got %d",
+			checkpoint.Number,
+		)
+	}
+
+	if checkpoint.Hash != "0x103" {
+		t.Fatalf(
+			"expected checkpoint hash 0x103, got %s",
+			checkpoint.Hash,
 		)
 	}
 }

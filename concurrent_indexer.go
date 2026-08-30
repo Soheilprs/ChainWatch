@@ -62,12 +62,15 @@ func (c *ConcurrentRangeIndexer) IndexRange(
 		)
 	}
 
-	if exists && checkpoint >= startBlock {
-		if checkpoint >= endBlock {
+	if exists &&
+		checkpoint.Number >= startBlock {
+
+		if checkpoint.Number >= endBlock {
 			return []BlockTransferIndex{}, nil
 		}
 
-		nextBlock = checkpoint + 1
+		nextBlock =
+			checkpoint.Number + 1
 	}
 
 	workerCtx, cancel :=
@@ -164,7 +167,12 @@ func (c *ConcurrentRangeIndexer) IndexRange(
 
 			err := c.checkpoints.Save(
 				ctx,
-				nextCommit,
+				BlockCheckpoint{
+					Number: nextCommit,
+					Hash: nextResult.
+						index.
+						BlockHash,
+				},
 			)
 
 			if err != nil {

@@ -139,10 +139,17 @@ func TestSequentialIndexerIndexesRange(
 		)
 	}
 
-	if checkpoint != 102 {
+	if checkpoint.Number != 102 {
 		t.Fatalf(
-			"expected checkpoint 102, got %d",
-			checkpoint,
+			"expected checkpoint number 102, got %d",
+			checkpoint.Number,
+		)
+	}
+
+	if checkpoint.Hash != "0x102" {
+		t.Fatalf(
+			"expected checkpoint hash 0x102, got %s",
+			checkpoint.Hash,
 		)
 	}
 }
@@ -188,7 +195,10 @@ func TestSequentialIndexerResumesFromCheckpoint(
 
 	err := checkpoints.Save(
 		ctx,
-		101,
+		BlockCheckpoint{
+			Number: 101,
+			Hash:   "0x101",
+		},
 	)
 
 	if err != nil {
@@ -267,10 +277,17 @@ func TestSequentialIndexerResumesFromCheckpoint(
 		)
 	}
 
-	if checkpoint != 102 {
+	if checkpoint.Number != 102 {
 		t.Fatalf(
-			"expected checkpoint 102, got %d",
-			checkpoint,
+			"expected checkpoint number 102, got %d",
+			checkpoint.Number,
+		)
+	}
+
+	if checkpoint.Hash != "0x102" {
+		t.Fatalf(
+			"expected checkpoint hash 0x102, got %s",
+			checkpoint.Hash,
 		)
 	}
 }
@@ -309,7 +326,10 @@ func TestSequentialIndexerDoesNotAdvanceCheckpointOnFailure(
 
 	err := checkpoints.Save(
 		ctx,
-		100,
+		BlockCheckpoint{
+			Number: 100,
+			Hash:   "0x100",
+		},
 	)
 
 	if err != nil {
@@ -380,10 +400,17 @@ func TestSequentialIndexerDoesNotAdvanceCheckpointOnFailure(
 		)
 	}
 
-	if checkpoint != 100 {
+	if checkpoint.Number != 100 {
 		t.Fatalf(
-			"expected checkpoint to remain 100, got %d",
-			checkpoint,
+			"expected checkpoint number to remain 100, got %d",
+			checkpoint.Number,
+		)
+	}
+
+	if checkpoint.Hash != "0x100" {
+		t.Fatalf(
+			"expected checkpoint hash to remain 0x100, got %s",
+			checkpoint.Hash,
 		)
 	}
 }
