@@ -32,11 +32,13 @@ func main() {
 		return
 	}
 
-	ctx, stop := signal.NotifyContext(
-		context.Background(),
-		os.Interrupt,
-		syscall.SIGTERM,
-	)
+	ctx, stop :=
+		signal.NotifyContext(
+			context.Background(),
+			os.Interrupt,
+			syscall.SIGTERM,
+		)
+
 	defer stop()
 
 	client, err :=
@@ -72,6 +74,7 @@ func main() {
 	defer pool.Close()
 
 	if err := pool.Ping(ctx); err != nil {
+
 		fmt.Println(
 			"Failed to connect to PostgreSQL:",
 			err,
@@ -87,6 +90,11 @@ func main() {
 		NewPostgresCheckpointStore(
 			pool,
 			"ethereum_erc20",
+		)
+
+	transferStore :=
+		NewPostgresBlockTransferStore(
+			pool,
 		)
 
 	checkpoint, exists, err :=
@@ -112,7 +120,9 @@ func main() {
 		)
 	} else {
 		latestBlock, err :=
-			client.GetLatestObservedBlock(ctx)
+			client.GetLatestObservedBlock(
+				ctx,
+			)
 
 		if err != nil {
 			fmt.Println(
@@ -141,6 +151,7 @@ func main() {
 		NewConcurrentRangeIndexer(
 			client,
 			checkpoints,
+			transferStore,
 			workerCount,
 		)
 
@@ -175,10 +186,11 @@ func main() {
 		)
 	}
 
-	errCh := make(
-		chan error,
-		1,
-	)
+	errCh :=
+		make(
+			chan error,
+			1,
+		)
 
 	go func() {
 		errCh <- indexer.Run(

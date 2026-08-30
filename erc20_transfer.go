@@ -19,7 +19,9 @@ var (
 )
 
 var erc20TransferTopic = crypto.Keccak256Hash(
-	[]byte("Transfer(address,address,uint256)"),
+	[]byte(
+		"Transfer(address,address,uint256)",
+	),
 )
 
 type ERC20Transfer struct {
@@ -28,6 +30,7 @@ type ERC20Transfer struct {
 	To              Address
 	Value           *big.Int
 	TransactionHash TransactionHash
+	LogIndex        uint
 }
 
 func IsERC20TransferLog(
@@ -56,17 +59,20 @@ func DecodeERC20Transfer(
 			ErrInvalidERC20TransferData
 	}
 
-	from := addressFromTopic(
-		log.Topics[1],
-	)
+	from :=
+		addressFromTopic(
+			log.Topics[1],
+		)
 
-	to := addressFromTopic(
-		log.Topics[2],
-	)
+	to :=
+		addressFromTopic(
+			log.Topics[2],
+		)
 
-	value := new(big.Int).SetBytes(
-		log.Data,
-	)
+	value :=
+		new(big.Int).SetBytes(
+			log.Data,
+		)
 
 	return ERC20Transfer{
 		Token:           log.Address,
@@ -74,13 +80,15 @@ func DecodeERC20Transfer(
 		To:              to,
 		Value:           value,
 		TransactionHash: transactionHash,
+		LogIndex:        log.Index,
 	}, nil
 }
 
 func addressFromTopic(
 	topic string,
 ) Address {
-	hash := common.HexToHash(topic)
+	hash :=
+		common.HexToHash(topic)
 
 	return Address(
 		common.BytesToAddress(

@@ -25,6 +25,7 @@ type TransferBlockClient interface {
 type SequentialIndexer struct {
 	client      TransferBlockClient
 	checkpoints CheckpointStore
+	transfers   BlockTransferStore
 }
 
 var _ RangeIndexer = (*SequentialIndexer)(nil)
@@ -32,10 +33,12 @@ var _ RangeIndexer = (*SequentialIndexer)(nil)
 func NewSequentialIndexer(
 	client TransferBlockClient,
 	checkpoints CheckpointStore,
+	transfers BlockTransferStore,
 ) *SequentialIndexer {
 	return &SequentialIndexer{
 		client:      client,
 		checkpoints: checkpoints,
+		transfers:   transfers,
 	}
 }
 
@@ -45,7 +48,8 @@ func (i *SequentialIndexer) IndexRange(
 	endBlock uint64,
 ) ([]BlockTransferIndex, error) {
 	if startBlock > endBlock {
-		return nil, ErrInvalidBlockRange
+		return nil,
+			ErrInvalidBlockRange
 	}
 
 	nextBlock := startBlock
@@ -64,17 +68,19 @@ func (i *SequentialIndexer) IndexRange(
 		checkpoint.Number >= startBlock {
 
 		if checkpoint.Number >= endBlock {
-			return []BlockTransferIndex{}, nil
+			return []BlockTransferIndex{},
+				nil
 		}
 
 		nextBlock =
 			checkpoint.Number + 1
 	}
 
-	results := make(
-		[]BlockTransferIndex,
-		0,
-	)
+	results :=
+		make(
+			[]BlockTransferIndex,
+			0,
+		)
 
 	for blockNumber := nextBlock; ; blockNumber++ {
 		block, err :=
@@ -105,13 +111,28 @@ func (i *SequentialIndexer) IndexRange(
 			)
 		}
 
-		err = i.checkpoints.Save(
-			ctx,
-			BlockCheckpoint{
-				Number: block.Number,
-				Hash:   block.Hash,
-			},
-		)
+		err =
+			i.transfers.SaveBlock(
+				ctx,
+				index,
+			)
+
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to save transfers for block %d: %w",
+				blockNumber,
+				err,
+			)
+		}
+
+		err =
+			i.checkpoints.Save(
+				ctx,
+				BlockCheckpoint{
+					Number: block.Number,
+					Hash:   block.Hash,
+				},
+			)
 
 		if err != nil {
 			return nil, fmt.Errorf(

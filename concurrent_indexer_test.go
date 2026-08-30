@@ -130,6 +130,7 @@ func TestConcurrentRangeIndexerProcessesBlocksConcurrently(
 		NewConcurrentRangeIndexer(
 			client,
 			checkpoints,
+			NewNoopBlockTransferStore(),
 			3,
 		)
 
@@ -275,6 +276,7 @@ func TestConcurrentRangeIndexerDoesNotAdvancePastFailure(
 		NewConcurrentRangeIndexer(
 			client,
 			checkpoints,
+			NewNoopBlockTransferStore(),
 			3,
 		)
 
@@ -330,11 +332,15 @@ func TestConcurrentRangeIndexerRejectsInvalidWorkerCount(
 	checkpoints :=
 		NewMemoryCheckpointStore()
 
+	transferStore :=
+		NewNoopBlockTransferStore()
+
 	indexer :=
 		NewConcurrentRangeIndexer(
 			client,
 			checkpoints,
-			0,
+			transferStore,
+			0, // important: invalid worker count
 		)
 
 	_, err := indexer.IndexRange(
@@ -430,6 +436,7 @@ func TestConcurrentRangeIndexerStopsWhenContextCanceled(
 		NewConcurrentRangeIndexer(
 			client,
 			checkpoints,
+			NewNoopBlockTransferStore(),
 			3,
 		)
 

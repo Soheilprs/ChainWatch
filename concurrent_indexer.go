@@ -20,6 +20,7 @@ type concurrentBlockResult struct {
 type ConcurrentRangeIndexer struct {
 	client      TransferBlockClient
 	checkpoints CheckpointStore
+	transfers   BlockTransferStore
 	workerCount int
 }
 
@@ -28,11 +29,13 @@ var _ RangeIndexer = (*ConcurrentRangeIndexer)(nil)
 func NewConcurrentRangeIndexer(
 	client TransferBlockClient,
 	checkpoints CheckpointStore,
+	transfers BlockTransferStore,
 	workerCount int,
 ) *ConcurrentRangeIndexer {
 	return &ConcurrentRangeIndexer{
 		client:      client,
 		checkpoints: checkpoints,
+		transfers:   transfers,
 		workerCount: workerCount,
 	}
 }
@@ -43,11 +46,13 @@ func (c *ConcurrentRangeIndexer) IndexRange(
 	endBlock uint64,
 ) ([]BlockTransferIndex, error) {
 	if startBlock > endBlock {
-		return nil, ErrInvalidBlockRange
+		return nil,
+			ErrInvalidBlockRange
 	}
 
 	if c.workerCount <= 0 {
-		return nil, ErrInvalidWorkerCount
+		return nil,
+			ErrInvalidWorkerCount
 	}
 
 	nextBlock := startBlock
@@ -66,7 +71,8 @@ func (c *ConcurrentRangeIndexer) IndexRange(
 		checkpoint.Number >= startBlock {
 
 		if checkpoint.Number >= endBlock {
-			return []BlockTransferIndex{}, nil
+			return []BlockTransferIndex{},
+				nil
 		}
 
 		nextBlock =
@@ -78,14 +84,16 @@ func (c *ConcurrentRangeIndexer) IndexRange(
 
 	defer cancel()
 
-	jobs := make(
-		chan uint64,
-	)
+	jobs :=
+		make(
+			chan uint64,
+		)
 
-	results := make(
-		chan concurrentBlockResult,
-		c.workerCount,
-	)
+	results :=
+		make(
+			chan concurrentBlockResult,
+			c.workerCount,
+		)
 
 	var workers sync.WaitGroup
 
@@ -97,6 +105,7 @@ func (c *ConcurrentRangeIndexer) IndexRange(
 			defer workers.Done()
 
 			for blockNumber := range jobs {
+
 				result :=
 					c.processBlock(
 						workerCtx,
@@ -135,20 +144,22 @@ func (c *ConcurrentRangeIndexer) IndexRange(
 		close(results)
 	}()
 
-	pending := make(
-		map[uint64]concurrentBlockResult,
-	)
+	pending :=
+		make(
+			map[uint64]concurrentBlockResult,
+		)
 
-	orderedResults := make(
-		[]BlockTransferIndex,
-		0,
-	)
+	orderedResults :=
+		make(
+			[]BlockTransferIndex,
+			0,
+		)
 
 	nextCommit := nextBlock
 
 	for result := range results {
-		pending[result.blockNumber] =
-			result
+
+		pending[result.blockNumber] = result
 
 		for {
 			nextResult, found :=
@@ -165,15 +176,32 @@ func (c *ConcurrentRangeIndexer) IndexRange(
 					nextResult.err
 			}
 
-			err := c.checkpoints.Save(
-				ctx,
-				BlockCheckpoint{
-					Number: nextCommit,
-					Hash: nextResult.
-						index.
-						BlockHash,
-				},
-			)
+			err :=
+				c.transfers.SaveBlock(
+					ctx,
+					nextResult.index,
+				)
+
+			if err != nil {
+				cancel()
+
+				return nil, fmt.Errorf(
+					"failed to save transfers for block %d: %w",
+					nextCommit,
+					err,
+				)
+			}
+
+			err =
+				c.checkpoints.Save(
+					ctx,
+					BlockCheckpoint{
+						Number: nextCommit,
+						Hash: nextResult.
+							index.
+							BlockHash,
+					},
+				)
 
 			if err != nil {
 				cancel()
@@ -185,18 +213,22 @@ func (c *ConcurrentRangeIndexer) IndexRange(
 				)
 			}
 
-			orderedResults = append(
-				orderedResults,
-				nextResult.index,
-			)
+			orderedResults =
+				append(
+					orderedResults,
+					nextResult.index,
+				)
 
 			delete(
 				pending,
 				nextCommit,
 			)
 
-			if nextCommit == endBlock {
-				return orderedResults, nil
+			if nextCommit ==
+				endBlock {
+
+				return orderedResults,
+					nil
 			}
 
 			nextCommit++
@@ -204,6 +236,7 @@ func (c *ConcurrentRangeIndexer) IndexRange(
 	}
 
 	if err := ctx.Err(); err != nil {
+
 		return nil, err
 	}
 
