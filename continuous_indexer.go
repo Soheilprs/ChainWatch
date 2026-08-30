@@ -23,24 +23,21 @@ type IndexedBlockHandler func(
 )
 
 type ContinuousIndexer struct {
-	client       ContinuousTransferClient
-	indexer      *SequentialIndexer
+	client       LatestObservedBlockClient
+	indexer      RangeIndexer
 	startBlock   uint64
 	pollInterval time.Duration
 }
 
 func NewContinuousIndexer(
-	client ContinuousTransferClient,
-	checkpoints CheckpointStore,
+	client LatestObservedBlockClient,
+	indexer RangeIndexer,
 	startBlock uint64,
 	pollInterval time.Duration,
 ) *ContinuousIndexer {
 	return &ContinuousIndexer{
-		client: client,
-		indexer: NewSequentialIndexer(
-			client,
-			checkpoints,
-		),
+		client:       client,
+		indexer:      indexer,
 		startBlock:   startBlock,
 		pollInterval: pollInterval,
 	}
@@ -111,10 +108,11 @@ func (c *ContinuousIndexer) Run(
 			return nil
 
 		case <-ticker.C:
-			err := c.runCycleAndHandle(
-				ctx,
-				handler,
-			)
+			err :=
+				c.runCycleAndHandle(
+					ctx,
+					handler,
+				)
 
 			if err != nil {
 				if errors.Is(
@@ -134,7 +132,8 @@ func (c *ContinuousIndexer) runCycleAndHandle(
 	ctx context.Context,
 	handler IndexedBlockHandler,
 ) error {
-	indexes, err := c.RunCycle(ctx)
+	indexes, err :=
+		c.RunCycle(ctx)
 
 	if err != nil {
 		return err

@@ -57,9 +57,18 @@ func main() {
 	checkpoints :=
 		NewMemoryCheckpointStore()
 
+	const workerCount = 3
+
+	rangeIndexer :=
+		NewConcurrentRangeIndexer(
+			client,
+			checkpoints,
+			workerCount,
+		)
+
 	indexer := NewContinuousIndexer(
 		client,
-		checkpoints,
+		rangeIndexer,
 		latestBlock.Number,
 		4*time.Second,
 	)
@@ -71,6 +80,11 @@ func main() {
 	fmt.Println(
 		"Starting block:",
 		latestBlock.Number,
+	)
+
+	fmt.Println(
+		"Workers:",
+		workerCount,
 	)
 
 	fmt.Println(

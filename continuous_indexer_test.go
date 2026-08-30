@@ -78,9 +78,15 @@ func TestContinuousIndexerRunCycle(
 	checkpoints :=
 		NewMemoryCheckpointStore()
 
+	rangeIndexer :=
+		NewSequentialIndexer(
+			client,
+			checkpoints,
+		)
+
 	indexer := NewContinuousIndexer(
 		client,
-		checkpoints,
+		rangeIndexer,
 		100,
 		time.Second,
 	)
@@ -180,9 +186,15 @@ func TestContinuousIndexerRunCycleResumes(
 		)
 	}
 
+	rangeIndexer :=
+		NewSequentialIndexer(
+			client,
+			checkpoints,
+		)
+
 	indexer := NewContinuousIndexer(
 		client,
-		checkpoints,
+		rangeIndexer,
 		100,
 		time.Second,
 	)
@@ -256,9 +268,15 @@ func TestContinuousIndexerStopsOnContextCancellation(
 	checkpoints :=
 		NewMemoryCheckpointStore()
 
+	rangeIndexer :=
+		NewSequentialIndexer(
+			client,
+			checkpoints,
+		)
+
 	indexer := NewContinuousIndexer(
 		client,
-		checkpoints,
+		rangeIndexer,
 		100,
 		time.Hour,
 	)
