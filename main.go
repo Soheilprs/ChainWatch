@@ -4,22 +4,29 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
 func main() {
-	rpcURL := os.Getenv("ETH_RPC_URL")
+	rpcURL := os.Getenv(
+		"ETH_RPC_URL",
+	)
 
 	if rpcURL == "" {
-		fmt.Println("ETH_RPC_URL is not set")
+		fmt.Println(
+			"ETH_RPC_URL is not set",
+		)
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(
+	ctx, stop := signal.NotifyContext(
 		context.Background(),
-		30*time.Second,
+		os.Interrupt,
+		syscall.SIGTERM,
 	)
-	defer cancel()
+	defer stop()
 
 	client, err := NewEthereumClient(
 		ctx,
@@ -36,326 +43,73 @@ func main() {
 
 	defer client.Close()
 
-	blockchain := NewBlockchain(
-		map[Address]uint64{},
-	)
-
-	service := NewChainWatchService(
-		client,
-		blockchain,
-	)
-
-	err = service.SyncLatestBlock(ctx)
-
-	if err != nil {
-		fmt.Println(
-			"Sync failed:",
-			err,
-		)
-		return
-	}
-
-	block, exists := blockchain.LatestBlock()
-
-	if !exists {
-		fmt.Println("No block was processed")
-		return
-	}
-
-	fmt.Println("Ethereum block synchronized")
-	fmt.Println("Block number:", block.Number)
-	fmt.Println("Block hash:", block.Hash)
-	fmt.Println("Timestamp:", block.Timestamp)
-
-	observedBlock, err :=
+	latestBlock, err :=
 		client.GetLatestObservedBlock(ctx)
 
 	if err != nil {
 		fmt.Println(
-			"Failed to fetch observed block:",
+			"Failed to fetch latest Ethereum block:",
 			err,
 		)
 		return
 	}
 
-	fmt.Println()
-	fmt.Println("Real Ethereum transactions")
-
-	fmt.Println(
-		"Transaction count:",
-		observedBlock.TransactionCount(),
-	)
-
-	limit := 5
-
-	if observedBlock.TransactionCount() < limit {
-		limit = observedBlock.TransactionCount()
-	}
-
-	for i := 0; i < limit; i++ {
-		tx := observedBlock.Transactions[i]
-
-		fmt.Println()
-		fmt.Println("Transaction:", i+1)
-		fmt.Println("Hash:", tx.Hash)
-		fmt.Println("From:", tx.From)
-
-		if tx.To == nil {
-			fmt.Println(
-				"To: contract creation",
-			)
-		} else {
-			fmt.Println(
-				"To:",
-				*tx.To,
-			)
-		}
-
-		fmt.Println(
-			"Value Wei:",
-			tx.ValueWei.String(),
-		)
-
-		fmt.Println(
-			"Nonce:",
-			tx.Nonce,
-		)
-
-		fmt.Println(
-			"Gas limit:",
-			tx.GasLimit,
-		)
-
-		fmt.Println(
-			"Type:",
-			tx.Type,
-		)
-
-		receipt, err :=
-			client.GetTransactionReceipt(
-				ctx,
-				tx.Hash,
-			)
-
-		if err != nil {
-			fmt.Println(
-				"Receipt error:",
-				err,
-			)
-			continue
-		}
-
-		fmt.Println(
-			"Gas used:",
-			receipt.GasUsed,
-		)
-
-		fmt.Println(
-			"Successful:",
-			receipt.Successful(),
-		)
-
-		fmt.Println(
-			"Log count:",
-			receipt.LogCount(),
-		)
-
-		if receipt.EffectiveGasPrice != nil {
-			fmt.Println(
-				"Effective gas price:",
-				receipt.EffectiveGasPrice.String(),
-			)
-
-			fmt.Println(
-				"Transaction fee Wei:",
-				receipt.FeeWei().String(),
-			)
-		}
-
-		if receipt.ContractAddress != nil {
-			fmt.Println(
-				"Created contract:",
-				*receipt.ContractAddress,
-			)
-		}
-
-		for _, log := range receipt.Logs {
-			if !IsERC20TransferLog(log) {
-				continue
-			}
-
-			transfer, err :=
-				DecodeERC20Transfer(
-					log,
-					tx.Hash,
-				)
-
-			if err != nil {
-				fmt.Println(
-					"Transfer decode error:",
-					err,
-				)
-				continue
-			}
-
-			fmt.Println()
-			fmt.Println(
-				"  ERC-20 Transfer",
-			)
-
-			fmt.Println(
-				"  Token:",
-				transfer.Token,
-			)
-
-			fmt.Println(
-				"  From:",
-				transfer.From,
-			)
-
-			fmt.Println(
-				"  To:",
-				transfer.To,
-			)
-
-			fmt.Println(
-				"  Amount:",
-				transfer.Value.String(),
-			)
-		}
-	}
-
-	// --------------------------------------------------
-	// Full block ERC-20 transfer indexing
-	// --------------------------------------------------
-
-	transferIndex, err :=
-		client.GetERC20TransfersByBlock(
-			ctx,
-			observedBlock,
-		)
-
-	if err != nil {
-		fmt.Println(
-			"Failed to index ERC20 transfers:",
-			err,
-		)
-		return
-	}
-
-	fmt.Println()
-	fmt.Println("ERC-20 Block Index")
-
-	fmt.Println(
-		"Block:",
-		transferIndex.BlockHash,
-	)
-
-	fmt.Println(
-		"Transfer count:",
-		transferIndex.TransferCount(),
-	)
-
-	transferLimit := 10
-
-	if transferIndex.TransferCount() < transferLimit {
-		transferLimit = transferIndex.TransferCount()
-	}
-
-	for i := 0; i < transferLimit; i++ {
-		transfer := transferIndex.Transfers[i]
-
-		fmt.Println()
-
-		fmt.Println(
-			"Transfer:",
-			i+1,
-		)
-
-		fmt.Println(
-			"Token:",
-			transfer.Token,
-		)
-
-		fmt.Println(
-			"From:",
-			transfer.From,
-		)
-
-		fmt.Println(
-			"To:",
-			transfer.To,
-		)
-
-		fmt.Println(
-			"Amount:",
-			transfer.Value.String(),
-		)
-
-		fmt.Println(
-			"Transaction:",
-			transfer.TransactionHash,
-		)
-	}
-
-	// --------------------------------------------------
-	// Sequential block indexing
-	// --------------------------------------------------
-
-	startBlock := uint64(0)
-
-	if observedBlock.Number >= 2 {
-		startBlock = observedBlock.Number - 2
-	}
-
-	checkpointStore :=
+	checkpoints :=
 		NewMemoryCheckpointStore()
 
-	indexer := NewSequentialIndexer(
+	indexer := NewContinuousIndexer(
 		client,
-		checkpointStore,
+		checkpoints,
+		latestBlock.Number,
+		4*time.Second,
 	)
 
-	indexes, err := indexer.IndexRange(
-		ctx,
-		startBlock,
-		observedBlock.Number,
+	fmt.Println(
+		"ChainWatch started",
 	)
 
-	if err != nil {
-		fmt.Println(
-			"Sequential indexing failed:",
-			err,
-		)
-		return
-	}
+	fmt.Println(
+		"Starting block:",
+		latestBlock.Number,
+	)
 
-	fmt.Println()
-	fmt.Println("Sequential Block Indexing")
+	fmt.Println(
+		"Press Ctrl+C to stop",
+	)
 
-	for _, index := range indexes {
+	handler := func(
+		index BlockTransferIndex,
+	) {
 		fmt.Printf(
-			"Block %d: %d ERC-20 transfers\n",
+			"Indexed block %d: %d ERC-20 transfers\n",
 			index.BlockNumber,
 			index.TransferCount(),
 		)
 	}
 
-	checkpoint, checkpointExists, err :=
-		checkpointStore.Load(ctx)
+	errCh := make(
+		chan error,
+		1,
+	)
+
+	go func() {
+		errCh <- indexer.Run(
+			ctx,
+			handler,
+		)
+	}()
+
+	err = <-errCh
 
 	if err != nil {
 		fmt.Println(
-			"Failed to load checkpoint:",
+			"Indexer stopped with error:",
 			err,
 		)
 		return
 	}
 
-	if checkpointExists {
-		fmt.Println(
-			"Checkpoint:",
-			checkpoint,
-		)
-	}
+	fmt.Println(
+		"ChainWatch stopped cleanly",
+	)
 }

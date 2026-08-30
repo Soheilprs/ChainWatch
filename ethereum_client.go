@@ -16,6 +16,8 @@ type EthereumClient struct {
 }
 
 var _ BlockchainClient = (*EthereumClient)(nil)
+var _ TransferBlockClient = (*EthereumClient)(nil)
+var _ ContinuousTransferClient = (*EthereumClient)(nil)
 
 func NewEthereumClient(
 	ctx context.Context,
