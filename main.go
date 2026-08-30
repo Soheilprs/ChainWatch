@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -79,6 +81,7 @@ func main() {
 			"Failed to connect to PostgreSQL:",
 			err,
 		)
+
 		return
 	}
 
@@ -94,6 +97,11 @@ func main() {
 
 	transferStore :=
 		NewPostgresBlockTransferStore(
+			pool,
+		)
+
+	transferReader :=
+		NewPostgresTransferReader(
 			pool,
 		)
 
@@ -163,6 +171,17 @@ func main() {
 			4*time.Second,
 		)
 
+	api :=
+		NewHTTPServer(
+			transferReader,
+		)
+
+	server :=
+		&http.Server{
+			Addr:    ":8080",
+			Handler: api.Handler(),
+		}
+
 	fmt.Println(
 		"ChainWatch started",
 	)
@@ -173,40 +192,79 @@ func main() {
 	)
 
 	fmt.Println(
-		"Press Ctrl+C to stop",
+		"API listening on :8080",
 	)
 
-	handler := func(
-		index BlockTransferIndex,
-	) {
-		fmt.Printf(
-			"Indexed block %d: %d ERC-20 transfers\n",
-			index.BlockNumber,
-			index.TransferCount(),
-		)
-	}
+	fmt.Println(
+		"Press Ctrl+C to stop",
+	)
 
 	errCh :=
 		make(
 			chan error,
-			1,
+			2,
 		)
 
 	go func() {
 		errCh <- indexer.Run(
 			ctx,
-			handler,
+			func(
+				index BlockTransferIndex,
+			) {
+				fmt.Printf(
+					"Indexed block %d: %d ERC-20 transfers\n",
+					index.BlockNumber,
+					index.TransferCount(),
+				)
+			},
 		)
 	}()
 
-	err = <-errCh
+	go func() {
+		err :=
+			server.ListenAndServe()
 
-	if err != nil {
+		if errors.Is(
+			err,
+			http.ErrServerClosed,
+		) {
+			err = nil
+		}
+
+		errCh <- err
+	}()
+
+	select {
+	case <-ctx.Done():
+
+	case err := <-errCh:
+		if err != nil {
+			fmt.Println(
+				"Service stopped with error:",
+				err,
+			)
+
+			stop()
+		}
+	}
+
+	shutdownCtx, cancel :=
+		context.WithTimeout(
+			context.Background(),
+			5*time.Second,
+		)
+
+	defer cancel()
+
+	if err :=
+		server.Shutdown(
+			shutdownCtx,
+		); err != nil {
+
 		fmt.Println(
-			"Indexer stopped with error:",
+			"Failed to shut down HTTP server:",
 			err,
 		)
-		return
 	}
 
 	fmt.Println(
