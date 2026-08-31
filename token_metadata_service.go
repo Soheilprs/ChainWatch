@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 )
@@ -58,11 +57,11 @@ func (s *TokenMetadataService) GetTokenMetadata(
 		)
 
 	if err != nil {
-		return TokenMetadata{},
-			fmt.Errorf(
-				"failed to load cached token metadata: %w",
-				err,
-			)
+		return TokenMetadata{}, NewDomainError(
+			ErrMetadata,
+			"load cached token metadata",
+			err,
+		)
 	}
 
 	if exists {
@@ -81,11 +80,11 @@ func (s *TokenMetadataService) GetTokenMetadata(
 		)
 
 	if err != nil {
-		return TokenMetadata{},
-			fmt.Errorf(
-				"failed to fetch token metadata: %w",
-				err,
-			)
+		return TokenMetadata{}, NewDomainError(
+			ErrMetadata,
+			"fetch token metadata",
+			err,
+		)
 	}
 
 	err =
@@ -95,11 +94,11 @@ func (s *TokenMetadataService) GetTokenMetadata(
 		)
 
 	if err != nil {
-		return TokenMetadata{},
-			fmt.Errorf(
-				"failed to persist token metadata: %w",
-				err,
-			)
+		return TokenMetadata{}, NewDomainError(
+			ErrMetadata,
+			"persist token metadata",
+			err,
+		)
 	}
 
 	s.cacheMetadata(

@@ -28,11 +28,13 @@ func NewPostgresCheckpointStore(
 
 func (s *PostgresCheckpointStore) Load(
 	ctx context.Context,
-) (BlockCheckpoint, bool, error) {
+) (checkpoint BlockCheckpoint, exists bool, err error) {
+	defer classifyDomainError(&err, ErrDatabase, "load checkpoint")
+
 	var blockNumber int64
 	var blockHash string
 
-	err := s.pool.QueryRow(
+	err = s.pool.QueryRow(
 		ctx,
 		`
 		SELECT block_number, block_hash
@@ -73,7 +75,9 @@ func (s *PostgresCheckpointStore) Load(
 func (s *PostgresCheckpointStore) Save(
 	ctx context.Context,
 	checkpoint BlockCheckpoint,
-) error {
+) (err error) {
+	defer classifyDomainError(&err, ErrDatabase, "save checkpoint")
+
 	if checkpoint.Number > uint64(^uint64(0)>>1) {
 		return fmt.Errorf(
 			"checkpoint block number is too large for PostgreSQL BIGINT: %d",
@@ -81,7 +85,7 @@ func (s *PostgresCheckpointStore) Save(
 		)
 	}
 
-	_, err := s.pool.Exec(
+	_, err = s.pool.Exec(
 		ctx,
 		`
 		INSERT INTO checkpoints (

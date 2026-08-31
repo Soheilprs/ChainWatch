@@ -24,7 +24,9 @@ func NewPostgresBlockTransferStore(
 func (s *PostgresBlockTransferStore) SaveBlock(
 	ctx context.Context,
 	index BlockTransferIndex,
-) error {
+) (err error) {
+	defer classifyDomainError(&err, ErrDatabase, "save block transfers")
+
 	tx, err :=
 		s.pool.Begin(ctx)
 
@@ -49,7 +51,7 @@ func (s *PostgresBlockTransferStore) SaveBlock(
 			)
 		}
 
-		_, err := tx.Exec(
+		_, err = tx.Exec(
 			ctx,
 			`
 			INSERT INTO erc20_transfers (

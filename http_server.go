@@ -165,12 +165,7 @@ func (s *HTTPServer) handleTransfers(
 		parseTransferQuery(r)
 
 	if err != nil {
-		http.Error(
-			w,
-			err.Error(),
-			http.StatusBadRequest,
-		)
-
+		s.writeHTTPError(w, r, err)
 		return
 	}
 
@@ -181,19 +176,7 @@ func (s *HTTPServer) handleTransfers(
 		)
 
 	if err != nil {
-		s.logger.ErrorContext(
-			r.Context(),
-			"failed to load transfers",
-			"error",
-			err,
-		)
-
-		http.Error(
-			w,
-			"failed to load transfers",
-			http.StatusInternalServerError,
-		)
-
+		s.writeHTTPError(w, r, err)
 		return
 	}
 
@@ -263,12 +246,7 @@ func (s *HTTPServer) handleTransfers(
 				err,
 			)
 
-			http.Error(
-				w,
-				"failed to encode pagination cursor",
-				http.StatusInternalServerError,
-			)
-
+			s.writeHTTPError(w, r, err)
 			return
 		}
 
@@ -318,10 +296,7 @@ func parseTransferQuery(
 			)
 
 		if err != nil {
-			return TransferQuery{},
-				errors.New(
-					"invalid block",
-				)
+			return TransferQuery{}, NewBadInputError("invalid block", err)
 		}
 
 		query.BlockNumber =
@@ -359,17 +334,11 @@ func parseTransferQuery(
 		if err != nil ||
 			limit <= 0 {
 
-			return TransferQuery{},
-				errors.New(
-					"invalid limit",
-				)
+			return TransferQuery{}, NewBadInputError("invalid limit", errors.New("limit must be a positive integer"))
 		}
 
 		if limit > 1000 {
-			return TransferQuery{},
-				errors.New(
-					"limit cannot exceed 1000",
-				)
+			return TransferQuery{}, NewBadInputError("limit cannot exceed 1000", errors.New("limit exceeds maximum"))
 		}
 
 		query.Limit =
@@ -385,8 +354,7 @@ func parseTransferQuery(
 			)
 
 		if err != nil {
-			return TransferQuery{},
-				ErrInvalidTransferCursor
+			return TransferQuery{}, NewBadInputError("invalid transfer cursor", err)
 		}
 
 		query.Cursor =
@@ -394,6 +362,30 @@ func parseTransferQuery(
 	}
 
 	return query, nil
+}
+
+func (s *HTTPServer) writeHTTPError(w http.ResponseWriter, r *http.Request, err error) {
+	status := http.StatusInternalServerError
+	message := "internal server error"
+
+	var publicError *PublicError
+	switch {
+	case errors.As(err, &publicError):
+		status = publicError.StatusCode
+		message = publicError.Message
+	case errors.Is(err, ErrNotFound):
+		status = http.StatusNotFound
+		message = "resource not found"
+	case errors.Is(err, ErrTemporaryDependency):
+		status = http.StatusServiceUnavailable
+		message = "service temporarily unavailable"
+	}
+
+	if status >= http.StatusInternalServerError {
+		s.logger.ErrorContext(r.Context(), "HTTP request failed", "error", err)
+	}
+
+	http.Error(w, message, status)
 }
 
 func writeJSON(

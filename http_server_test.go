@@ -737,6 +737,52 @@ func TestHTTPServerHandlesReaderError(
 			response.Code,
 		)
 	}
+
+	if strings.Contains(response.Body.String(), "database exploded") {
+		t.Fatal("internal error details leaked to the client")
+	}
+}
+
+func TestHTTPServerMapsDomainErrors(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantBody   string
+	}{
+		{
+			name:       "not found",
+			err:        NewDomainError(ErrNotFound, "load resource", errors.New("private lookup details")),
+			wantStatus: http.StatusNotFound,
+			wantBody:   "resource not found",
+		},
+		{
+			name:       "temporary dependency",
+			err:        NewDomainError(ErrTemporaryDependency, "query dependency", errors.New("private network details")),
+			wantStatus: http.StatusServiceUnavailable,
+			wantBody:   "service temporarily unavailable",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := NewHTTPServer(&MockTransferReader{Err: test.err}, nil)
+			request := httptest.NewRequest(http.MethodGet, "/transfers", nil)
+			response := httptest.NewRecorder()
+
+			server.Handler().ServeHTTP(response, request)
+
+			if response.Code != test.wantStatus {
+				t.Fatalf("status = %d, want %d", response.Code, test.wantStatus)
+			}
+			if !strings.Contains(response.Body.String(), test.wantBody) {
+				t.Fatalf("body = %q, want safe message %q", response.Body.String(), test.wantBody)
+			}
+			if strings.Contains(response.Body.String(), "private") {
+				t.Fatal("internal domain error details leaked to the client")
+			}
+		})
+	}
 }
 
 func TestHTTPServerEnrichesTransferWithTokenMetadata(

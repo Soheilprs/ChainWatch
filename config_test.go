@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -35,6 +36,19 @@ func TestLoadConfigUsesDefaults(t *testing.T) {
 	}
 	if config.ReadHeaderTimeout != defaultReadHeaderTimeout {
 		t.Fatalf("read header timeout = %s, want %s", config.ReadHeaderTimeout, defaultReadHeaderTimeout)
+	}
+}
+
+func TestLoadConfigClassifiesConfigurationValidation(t *testing.T) {
+	t.Setenv("ETH_RPC_URL", "")
+	t.Setenv("DATABASE_URL", "postgres://localhost/chainwatch")
+
+	_, err := LoadConfig()
+	if !errors.Is(err, ErrConfiguration) {
+		t.Fatalf("expected configuration error, got %v", err)
+	}
+	if !errors.Is(err, ErrValidation) {
+		t.Fatalf("expected validation error, got %v", err)
 	}
 }
 

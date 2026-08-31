@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -28,6 +29,7 @@ func (m *MockTokenMetadataFetcher) FetchTokenMetadata(
 type MockTokenMetadataStore struct {
 	Metadata TokenMetadata
 	Exists   bool
+	Err      error
 
 	LoadCalls int
 	SaveCalls int
@@ -38,6 +40,9 @@ func (m *MockTokenMetadataStore) LoadTokenMetadata(
 	address Address,
 ) (TokenMetadata, bool, error) {
 	m.LoadCalls++
+	if m.Err != nil {
+		return TokenMetadata{}, false, m.Err
+	}
 
 	return m.Metadata,
 		m.Exists,
@@ -281,5 +286,24 @@ func TestTokenMetadataServiceCacheIsCaseInsensitive(
 			"expected only one RPC fetch, got %d",
 			fetcher.Calls,
 		)
+	}
+}
+
+func TestTokenMetadataServiceClassifiesFailures(t *testing.T) {
+	cause := errors.New("metadata database unavailable")
+	service := NewTokenMetadataService(
+		&MockTokenMetadataFetcher{},
+		&MockTokenMetadataStore{Err: cause},
+	)
+
+	_, err := service.GetTokenMetadata(
+		context.Background(),
+		"0x1111111111111111111111111111111111111111",
+	)
+	if !errors.Is(err, ErrMetadata) {
+		t.Fatalf("expected metadata classification, got %v", err)
+	}
+	if !errors.Is(err, cause) {
+		t.Fatalf("expected original cause, got %v", err)
 	}
 }

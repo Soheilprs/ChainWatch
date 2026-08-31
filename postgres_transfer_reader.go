@@ -26,7 +26,9 @@ func NewPostgresTransferReader(
 func (r *PostgresTransferReader) ListTransfers(
 	ctx context.Context,
 	query TransferQuery,
-) (TransferPage, error) {
+) (page TransferPage, err error) {
+	defer classifyDomainError(&err, ErrDatabase, "list transfers")
+
 	limit := query.Limit
 
 	if limit <= 0 {
@@ -309,7 +311,7 @@ func (r *PostgresTransferReader) ListTransfers(
 			)
 	}
 
-	page := TransferPage{
+	page = TransferPage{
 		Transfers: transfers,
 	}
 

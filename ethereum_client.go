@@ -29,8 +29,9 @@ func NewEthereumClient(
 	)
 
 	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to connect to ethereum rpc: %w",
+		return nil, NewDomainError(
+			ErrRPC,
+			"connect to Ethereum RPC",
 			err,
 		)
 	}
@@ -42,7 +43,9 @@ func NewEthereumClient(
 
 func (e *EthereumClient) GetLatestBlock(
 	ctx context.Context,
-) (Block, error) {
+) (result Block, err error) {
+	defer classifyDomainError(&err, ErrRPC, "fetch latest Ethereum block")
+
 	header, err := e.client.HeaderByNumber(
 		ctx,
 		nil,
@@ -65,7 +68,9 @@ func (e *EthereumClient) GetLatestBlock(
 
 func (e *EthereumClient) GetLatestObservedBlock(
 	ctx context.Context,
-) (ObservedBlock, error) {
+) (result ObservedBlock, err error) {
+	defer classifyDomainError(&err, ErrRPC, "fetch latest observed Ethereum block")
+
 	block, err := e.client.BlockByNumber(
 		ctx,
 		nil,
@@ -121,7 +126,9 @@ func observedLogFromEthereumLog(
 func (e *EthereumClient) GetTransactionReceipt(
 	ctx context.Context,
 	hash TransactionHash,
-) (ObservedReceipt, error) {
+) (result ObservedReceipt, err error) {
+	defer classifyDomainError(&err, ErrRPC, "fetch Ethereum transaction receipt")
+
 	receipt, err := e.client.TransactionReceipt(
 		ctx,
 		common.HexToHash(string(hash)),
@@ -183,7 +190,9 @@ func (e *EthereumClient) GetTransactionReceipt(
 func (e *EthereumClient) GetERC20TransfersByBlock(
 	ctx context.Context,
 	block ObservedBlock,
-) (BlockTransferIndex, error) {
+) (result BlockTransferIndex, err error) {
+	defer classifyDomainError(&err, ErrRPC, "fetch ERC20 transfer logs")
+
 	blockHash := common.HexToHash(
 		string(block.Hash),
 	)
@@ -323,7 +332,9 @@ func (e *EthereumClient) observedBlockFromEthereumBlock(
 func (e *EthereumClient) GetObservedBlockByNumber(
 	ctx context.Context,
 	blockNumber uint64,
-) (ObservedBlock, error) {
+) (result ObservedBlock, err error) {
+	defer classifyDomainError(&err, ErrRPC, "fetch Ethereum block by number")
+
 	number := new(big.Int).SetUint64(
 		blockNumber,
 	)

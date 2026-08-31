@@ -27,13 +27,15 @@ func NewPostgresTokenMetadataStore(
 func (s *PostgresTokenMetadataStore) LoadTokenMetadata(
 	ctx context.Context,
 	address Address,
-) (TokenMetadata, bool, error) {
+) (metadata TokenMetadata, exists bool, err error) {
+	defer classifyDomainError(&err, ErrDatabase, "load token metadata")
+
 	var storedAddress string
 	var name string
 	var symbol string
 	var decimals int16
 
-	err :=
+	err =
 		s.pool.QueryRow(
 			ctx,
 			`
@@ -98,8 +100,10 @@ func (s *PostgresTokenMetadataStore) LoadTokenMetadata(
 func (s *PostgresTokenMetadataStore) SaveTokenMetadata(
 	ctx context.Context,
 	metadata TokenMetadata,
-) error {
-	_, err :=
+) (err error) {
+	defer classifyDomainError(&err, ErrDatabase, "save token metadata")
+
+	_, err =
 		s.pool.Exec(
 			ctx,
 			`

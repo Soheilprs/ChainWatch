@@ -86,13 +86,15 @@ func mustParseERC20MetadataABI() abi.ABI {
 func (e *EthereumClient) FetchTokenMetadata(
 	ctx context.Context,
 	address Address,
-) (TokenMetadata, error) {
+) (result TokenMetadata, err error) {
 	if !common.IsHexAddress(
 		string(address),
 	) {
 		return TokenMetadata{},
 			ErrInvalidTokenAddress
 	}
+
+	defer classifyDomainError(&err, ErrRPC, "fetch ERC20 token metadata")
 
 	tokenAddress :=
 		common.HexToAddress(

@@ -31,7 +31,15 @@ type Config struct {
 // LoadConfig reads and validates ChainWatch configuration from the process
 // environment.
 func LoadConfig() (Config, error) {
-	return loadConfig(os.LookupEnv)
+	config, err := loadConfig(os.LookupEnv)
+	if err != nil {
+		return Config{}, NewDomainError(
+			ErrConfiguration,
+			"load environment configuration",
+			err,
+		)
+	}
+	return config, nil
 }
 
 type environmentLookup func(string) (string, bool)
@@ -63,7 +71,7 @@ func loadConfig(lookup environmentLookup) (Config, error) {
 	if value, exists := optionalEnvironment(lookup, "WORKER_COUNT"); exists {
 		config.WorkerCount, err = strconv.Atoi(value)
 		if err != nil {
-			return Config{}, fmt.Errorf("parse WORKER_COUNT: %w", err)
+			return Config{}, NewDomainError(ErrValidation, "parse WORKER_COUNT", err)
 		}
 	}
 	if config.PollInterval, err = durationEnvironment(lookup, "POLL_INTERVAL", config.PollInterval); err != nil {
@@ -86,19 +94,19 @@ func loadConfig(lookup environmentLookup) (Config, error) {
 func (c Config) Validate() error {
 	switch {
 	case strings.TrimSpace(c.EthereumRPCURL) == "":
-		return errors.New("ETH_RPC_URL is required")
+		return NewDomainError(ErrValidation, "validate configuration", errors.New("ETH_RPC_URL is required"))
 	case strings.TrimSpace(c.DatabaseURL) == "":
-		return errors.New("DATABASE_URL is required")
+		return NewDomainError(ErrValidation, "validate configuration", errors.New("DATABASE_URL is required"))
 	case strings.TrimSpace(c.HTTPAddress) == "":
-		return errors.New("HTTP_ADDRESS must not be empty")
+		return NewDomainError(ErrValidation, "validate configuration", errors.New("HTTP_ADDRESS must not be empty"))
 	case c.WorkerCount <= 0:
-		return errors.New("WORKER_COUNT must be greater than zero")
+		return NewDomainError(ErrValidation, "validate configuration", errors.New("WORKER_COUNT must be greater than zero"))
 	case c.PollInterval <= 0:
-		return errors.New("POLL_INTERVAL must be greater than zero")
+		return NewDomainError(ErrValidation, "validate configuration", errors.New("POLL_INTERVAL must be greater than zero"))
 	case c.ShutdownTimeout <= 0:
-		return errors.New("SHUTDOWN_TIMEOUT must be greater than zero")
+		return NewDomainError(ErrValidation, "validate configuration", errors.New("SHUTDOWN_TIMEOUT must be greater than zero"))
 	case c.ReadHeaderTimeout <= 0:
-		return errors.New("READ_HEADER_TIMEOUT must be greater than zero")
+		return NewDomainError(ErrValidation, "validate configuration", errors.New("READ_HEADER_TIMEOUT must be greater than zero"))
 	default:
 		return nil
 	}
@@ -107,7 +115,11 @@ func (c Config) Validate() error {
 func requiredEnvironment(lookup environmentLookup, name string) (string, error) {
 	value, exists := optionalEnvironment(lookup, name)
 	if !exists {
-		return "", fmt.Errorf("%s is required", name)
+		return "", NewDomainError(
+			ErrValidation,
+			"validate configuration",
+			fmt.Errorf("%s is required", name),
+		)
 	}
 	return value, nil
 }
@@ -130,7 +142,7 @@ func durationEnvironment(
 
 	duration, err := time.ParseDuration(value)
 	if err != nil {
-		return 0, fmt.Errorf("parse %s: %w", name, err)
+		return 0, NewDomainError(ErrValidation, "parse "+name, err)
 	}
 	return duration, nil
 }

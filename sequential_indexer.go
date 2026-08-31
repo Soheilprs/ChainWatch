@@ -46,10 +46,11 @@ func (i *SequentialIndexer) IndexRange(
 	ctx context.Context,
 	startBlock uint64,
 	endBlock uint64,
-) ([]BlockTransferIndex, error) {
+) (indexes []BlockTransferIndex, err error) {
+	defer classifyDomainError(&err, ErrIndexing, "index block range sequentially")
+
 	if startBlock > endBlock {
-		return nil,
-			ErrInvalidBlockRange
+		return nil, NewDomainError(ErrValidation, "validate block range", ErrInvalidBlockRange)
 	}
 
 	nextBlock := startBlock

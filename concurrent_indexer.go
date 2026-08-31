@@ -44,15 +44,15 @@ func (c *ConcurrentRangeIndexer) IndexRange(
 	ctx context.Context,
 	startBlock uint64,
 	endBlock uint64,
-) ([]BlockTransferIndex, error) {
+) (indexes []BlockTransferIndex, err error) {
+	defer classifyDomainError(&err, ErrIndexing, "index block range concurrently")
+
 	if startBlock > endBlock {
-		return nil,
-			ErrInvalidBlockRange
+		return nil, NewDomainError(ErrValidation, "validate block range", ErrInvalidBlockRange)
 	}
 
 	if c.workerCount <= 0 {
-		return nil,
-			ErrInvalidWorkerCount
+		return nil, NewDomainError(ErrValidation, "validate worker count", ErrInvalidWorkerCount)
 	}
 
 	nextBlock := startBlock
