@@ -1,0 +1,40 @@
+# ChainWatch
+
+ChainWatch is an Ethereum ERC-20 transfer indexer and Go HTTP service backed by PostgreSQL.
+
+## Run with Docker Compose
+
+Copy the environment template and set `ETH_RPC_URL` to an Ethereum JSON-RPC endpoint:
+
+```bash
+cp .env.example .env
+docker compose --profile app up --build
+```
+
+Compose initializes a new PostgreSQL volume from `migrations/`, waits for the database health check, builds the application image, and publishes ChainWatch on `http://localhost:8080`. Verify it with:
+
+```bash
+curl --fail http://localhost:8080/health
+curl --fail http://localhost:8080/metrics
+```
+
+The `app` profile keeps the existing database-only workflow available:
+
+```bash
+docker compose up -d postgres
+```
+
+To apply migrations to an existing PostgreSQL volume, run each new migration before starting the application. PostgreSQL's initialization directory only runs scripts when it creates an empty data directory.
+
+## Build the production image
+
+```bash
+docker build --tag chainwatch:local .
+docker run --rm \
+  --publish 8080:8080 \
+  --env ETH_RPC_URL=https://ethereum.example/v1/replace-me \
+  --env 'DATABASE_URL=postgres://chainwatch:chainwatch@host.docker.internal:5432/chainwatch?sslmode=disable' \
+  chainwatch:local
+```
+
+The multi-stage build uses digest-pinned base images and produces a stripped, statically linked binary. The runtime image contains CA certificates, runs as the unprivileged `chainwatch` user, and checks `/health`. Runtime behavior is configured entirely with environment variables; see `config.go` for defaults and validation.

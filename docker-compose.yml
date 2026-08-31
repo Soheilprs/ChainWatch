@@ -10,6 +10,30 @@ services:
       - "5432:5432"
     volumes:
       - chainwatch_postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chainwatch -d chainwatch"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  chainwatch:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: chainwatch:local
+    init: true
+    environment:
+      ETH_RPC_URL: ${ETH_RPC_URL:-http://host.docker.internal:8545}
+      DATABASE_URL: postgres://chainwatch:chainwatch@postgres:5432/chainwatch?sslmode=disable
+      HTTP_ADDRESS: :8080
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   chainwatch_postgres_data:
