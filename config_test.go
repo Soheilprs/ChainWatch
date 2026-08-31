@@ -25,6 +25,9 @@ func TestLoadConfigUsesDefaults(t *testing.T) {
 	if config.HTTPAddress != defaultHTTPAddress {
 		t.Fatalf("HTTP address = %q, want %q", config.HTTPAddress, defaultHTTPAddress)
 	}
+	if config.ProfilingAddress != "" {
+		t.Fatalf("profiling address = %q, want profiling disabled", config.ProfilingAddress)
+	}
 	if config.WorkerCount != defaultWorkerCount {
 		t.Fatalf("worker count = %d, want %d", config.WorkerCount, defaultWorkerCount)
 	}
@@ -75,6 +78,7 @@ func TestLoadConfigReadsOverrides(t *testing.T) {
 		"ETH_RPC_URL":             "http://localhost:8545",
 		"DATABASE_URL":            "postgres://localhost/chainwatch",
 		"HTTP_ADDRESS":            "127.0.0.1:9090",
+		"PPROF_ADDRESS":           "127.0.0.1:6060",
 		"WORKER_COUNT":            "8",
 		"POLL_INTERVAL":           "750ms",
 		"SHUTDOWN_TIMEOUT":        "12s",
@@ -95,6 +99,7 @@ func TestLoadConfigReadsOverrides(t *testing.T) {
 	}
 
 	if config.HTTPAddress != "127.0.0.1:9090" ||
+		config.ProfilingAddress != "127.0.0.1:6060" ||
 		config.WorkerCount != 8 ||
 		config.PollInterval != 750*time.Millisecond ||
 		config.ShutdownTimeout != 12*time.Second ||
@@ -141,6 +146,8 @@ func TestLoadConfigRejectsInvalidValues(t *testing.T) {
 		want  string
 	}{
 		{name: "worker syntax", key: "WORKER_COUNT", value: "many", want: "parse WORKER_COUNT"},
+		{name: "pprof public bind", key: "PPROF_ADDRESS", value: "0.0.0.0:6060", want: "loopback"},
+		{name: "pprof missing port", key: "PPROF_ADDRESS", value: "localhost", want: "missing port"},
 		{name: "worker zero", key: "WORKER_COUNT", value: "0", want: "WORKER_COUNT must be greater than zero"},
 		{name: "poll syntax", key: "POLL_INTERVAL", value: "soon", want: "parse POLL_INTERVAL"},
 		{name: "poll zero", key: "POLL_INTERVAL", value: "0s", want: "POLL_INTERVAL must be greater than zero"},

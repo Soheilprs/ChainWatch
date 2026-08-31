@@ -32,6 +32,7 @@ type Config struct {
 	EthereumRPCURL       string
 	DatabaseURL          string
 	HTTPAddress          string
+	ProfilingAddress     string
 	WorkerCount          int
 	PollInterval         time.Duration
 	ShutdownTimeout      time.Duration
@@ -97,6 +98,9 @@ func loadConfig(lookup environmentLookup) (Config, error) {
 
 	if value, exists := optionalEnvironment(lookup, "HTTP_ADDRESS"); exists {
 		config.HTTPAddress = value
+	}
+	if value, exists := optionalEnvironment(lookup, "PPROF_ADDRESS"); exists {
+		config.ProfilingAddress = value
 	}
 	if value, exists := optionalEnvironment(lookup, "WORKER_COUNT"); exists {
 		config.WorkerCount, err = strconv.Atoi(value)
@@ -176,6 +180,11 @@ func (c Config) Validate() error {
 	case c.MaxReorgDepth == 0:
 		return NewDomainError(ErrValidation, "validate configuration", errors.New("MAX_REORG_DEPTH must be greater than zero"))
 	default:
+		if c.ProfilingAddress != "" {
+			if err := validateProfilingAddress(c.ProfilingAddress); err != nil {
+				return NewDomainError(ErrValidation, "validate PPROF_ADDRESS", err)
+			}
+		}
 		if err := c.RPCResilienceConfig().Validate(); err != nil {
 			return NewDomainError(
 				ErrValidation,

@@ -38,3 +38,13 @@ docker run --rm \
 ```
 
 The multi-stage build uses digest-pinned base images and produces a stripped, statically linked binary. The runtime image contains CA certificates, runs as the unprivileged `chainwatch` user, and checks `/health`. Runtime behavior is configured entirely with environment variables; see `config.go` for defaults and validation.
+
+## Performance diagnostics
+
+Run the representative microbenchmarks with allocation reporting:
+
+```bash
+go test -run '^$' -bench . -benchmem ./...
+```
+
+Runtime profiles are disabled by default. To enable them, set `PPROF_ADDRESS` to a loopback-only listener such as `127.0.0.1:6060`, then access `/debug/pprof/` on that separate address. ChainWatch rejects non-loopback profiling addresses, and the public HTTP listener never registers profiling routes.

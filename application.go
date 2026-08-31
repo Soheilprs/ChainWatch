@@ -94,6 +94,17 @@ func RunApplication(ctx context.Context, config Config, logger *slog.Logger) err
 		WriteTimeout:      config.WriteTimeout,
 		IdleTimeout:       config.IdleTimeout,
 	}
+	var profilingServer *http.Server
+	if config.ProfilingAddress != "" {
+		profilingServer = &http.Server{
+			Addr:              config.ProfilingAddress,
+			Handler:           newProfilingHandler(),
+			ReadHeaderTimeout: config.ReadHeaderTimeout,
+			ReadTimeout:       config.ReadTimeout,
+			IdleTimeout:       config.IdleTimeout,
+		}
+		logger.InfoContext(ctx, "pprof server enabled", "address", profilingServer.Addr)
+	}
 
 	logger.InfoContext(
 		ctx,
@@ -107,7 +118,11 @@ func RunApplication(ctx context.Context, config Config, logger *slog.Logger) err
 		err  error
 	}
 
-	resultCh := make(chan serviceResult, 2)
+	serviceCount := 2
+	if profilingServer != nil {
+		serviceCount++
+	}
+	resultCh := make(chan serviceResult, serviceCount)
 	go func() {
 		resultCh <- serviceResult{name: "indexer", err: indexer.Run(ctx, func(index BlockTransferIndex) {
 			metrics.RecordIndexedBlock(index.TransferCount())
@@ -127,6 +142,15 @@ func RunApplication(ctx context.Context, config Config, logger *slog.Logger) err
 		}
 		resultCh <- serviceResult{name: "HTTP server", err: err}
 	}()
+	if profilingServer != nil {
+		go func() {
+			err := profilingServer.ListenAndServe()
+			if errors.Is(err, http.ErrServerClosed) {
+				err = nil
+			}
+			resultCh <- serviceResult{name: "pprof server", err: err}
+		}()
+	}
 
 	var runErr error
 	completedServices := 0
@@ -160,8 +184,13 @@ func RunApplication(ctx context.Context, config Config, logger *slog.Logger) err
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		runErr = errors.Join(runErr, fmt.Errorf("shut down HTTP server: %w", err))
 	}
+	if profilingServer != nil {
+		if err := profilingServer.Shutdown(shutdownCtx); err != nil {
+			runErr = errors.Join(runErr, fmt.Errorf("shut down pprof server: %w", err))
+		}
+	}
 
-	for completedServices < 2 {
+	for completedServices < serviceCount {
 		select {
 		case result := <-resultCh:
 			recordResult(result)
