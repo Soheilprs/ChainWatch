@@ -17,19 +17,29 @@ const (
 	defaultReadHeaderTimeout = 5 * time.Second
 	defaultConfirmationDepth = uint64(12)
 	defaultMaxReorgDepth     = uint64(64)
+	defaultRPCMaxAttempts    = 4
+	defaultRPCInitialBackoff = 200 * time.Millisecond
+	defaultRPCMaxBackoff     = 3 * time.Second
+	defaultRPCRateLimit      = 20
+	defaultRPCBurst          = 10
 )
 
 // Config contains all runtime settings needed to start ChainWatch.
 type Config struct {
-	EthereumRPCURL    string
-	DatabaseURL       string
-	HTTPAddress       string
-	WorkerCount       int
-	PollInterval      time.Duration
-	ShutdownTimeout   time.Duration
-	ReadHeaderTimeout time.Duration
-	ConfirmationDepth uint64
-	MaxReorgDepth     uint64
+	EthereumRPCURL       string
+	DatabaseURL          string
+	HTTPAddress          string
+	WorkerCount          int
+	PollInterval         time.Duration
+	ShutdownTimeout      time.Duration
+	ReadHeaderTimeout    time.Duration
+	ConfirmationDepth    uint64
+	MaxReorgDepth        uint64
+	RPCMaxAttempts       int
+	RPCInitialBackoff    time.Duration
+	RPCMaxBackoff        time.Duration
+	RPCRequestsPerSecond int
+	RPCBurst             int
 }
 
 // LoadConfig reads and validates ChainWatch configuration from the process
@@ -54,13 +64,18 @@ func loadConfig(lookup environmentLookup) (Config, error) {
 	}
 
 	config := Config{
-		HTTPAddress:       defaultHTTPAddress,
-		WorkerCount:       defaultWorkerCount,
-		PollInterval:      defaultPollInterval,
-		ShutdownTimeout:   defaultShutdownTimeout,
-		ReadHeaderTimeout: defaultReadHeaderTimeout,
-		ConfirmationDepth: defaultConfirmationDepth,
-		MaxReorgDepth:     defaultMaxReorgDepth,
+		HTTPAddress:          defaultHTTPAddress,
+		WorkerCount:          defaultWorkerCount,
+		PollInterval:         defaultPollInterval,
+		ShutdownTimeout:      defaultShutdownTimeout,
+		ReadHeaderTimeout:    defaultReadHeaderTimeout,
+		ConfirmationDepth:    defaultConfirmationDepth,
+		MaxReorgDepth:        defaultMaxReorgDepth,
+		RPCMaxAttempts:       defaultRPCMaxAttempts,
+		RPCInitialBackoff:    defaultRPCInitialBackoff,
+		RPCMaxBackoff:        defaultRPCMaxBackoff,
+		RPCRequestsPerSecond: defaultRPCRateLimit,
+		RPCBurst:             defaultRPCBurst,
 	}
 
 	var err error
@@ -95,6 +110,21 @@ func loadConfig(lookup environmentLookup) (Config, error) {
 	if config.MaxReorgDepth, err = uint64Environment(lookup, "MAX_REORG_DEPTH", config.MaxReorgDepth); err != nil {
 		return Config{}, err
 	}
+	if config.RPCMaxAttempts, err = intEnvironment(lookup, "RPC_MAX_ATTEMPTS", config.RPCMaxAttempts); err != nil {
+		return Config{}, err
+	}
+	if config.RPCInitialBackoff, err = durationEnvironment(lookup, "RPC_INITIAL_BACKOFF", config.RPCInitialBackoff); err != nil {
+		return Config{}, err
+	}
+	if config.RPCMaxBackoff, err = durationEnvironment(lookup, "RPC_MAX_BACKOFF", config.RPCMaxBackoff); err != nil {
+		return Config{}, err
+	}
+	if config.RPCRequestsPerSecond, err = intEnvironment(lookup, "RPC_REQUESTS_PER_SECOND", config.RPCRequestsPerSecond); err != nil {
+		return Config{}, err
+	}
+	if config.RPCBurst, err = intEnvironment(lookup, "RPC_BURST", config.RPCBurst); err != nil {
+		return Config{}, err
+	}
 
 	if err := config.Validate(); err != nil {
 		return Config{}, err
@@ -122,8 +152,42 @@ func (c Config) Validate() error {
 	case c.MaxReorgDepth == 0:
 		return NewDomainError(ErrValidation, "validate configuration", errors.New("MAX_REORG_DEPTH must be greater than zero"))
 	default:
+		if err := c.RPCResilienceConfig().Validate(); err != nil {
+			return NewDomainError(
+				ErrValidation,
+				"validate RPC resilience configuration",
+				err,
+			)
+		}
 		return nil
 	}
+}
+
+func (c Config) RPCResilienceConfig() RPCResilienceConfig {
+	return RPCResilienceConfig{
+		MaxAttempts:       c.RPCMaxAttempts,
+		InitialBackoff:    c.RPCInitialBackoff,
+		MaxBackoff:        c.RPCMaxBackoff,
+		JitterFraction:    0.2,
+		RequestsPerSecond: c.RPCRequestsPerSecond,
+		Burst:             c.RPCBurst,
+	}
+}
+
+func intEnvironment(
+	lookup environmentLookup,
+	name string,
+	defaultValue int,
+) (int, error) {
+	value, exists := optionalEnvironment(lookup, name)
+	if !exists {
+		return defaultValue, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, NewDomainError(ErrValidation, "parse "+name, err)
+	}
+	return parsed, nil
 }
 
 func uint64Environment(

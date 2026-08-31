@@ -109,6 +109,9 @@ func TestMetricsPrometheusOutput(
 	)
 
 	metrics.RecordIndexerError()
+	metrics.RecordRPCRequest()
+	metrics.RecordRPCRetry()
+	metrics.RecordRPCFailure()
 
 	var output strings.Builder
 
@@ -132,6 +135,9 @@ func TestMetricsPrometheusOutput(
 			"chainwatch_indexed_blocks_total 1",
 			"chainwatch_indexed_transfers_total 42",
 			"chainwatch_indexer_errors_total 1",
+			"chainwatch_rpc_requests_total 1",
+			"chainwatch_rpc_retries_total 1",
+			"chainwatch_rpc_failures_total 1",
 		}
 
 	for _, value := range expected {

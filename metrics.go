@@ -17,6 +17,10 @@ type Metrics struct {
 	indexerErrors    atomic.Uint64
 
 	tokenMetadataErrors atomic.Uint64
+
+	rpcRequests atomic.Uint64
+	rpcRetries  atomic.Uint64
+	rpcFailures atomic.Uint64
 }
 
 type MetricsSnapshot struct {
@@ -29,6 +33,10 @@ type MetricsSnapshot struct {
 	IndexerErrors    uint64
 
 	TokenMetadataErrors uint64
+
+	RPCRequests uint64
+	RPCRetries  uint64
+	RPCFailures uint64
 }
 
 func NewMetrics() *Metrics {
@@ -70,6 +78,18 @@ func (m *Metrics) RecordTokenMetadataError() {
 	m.tokenMetadataErrors.Add(1)
 }
 
+func (m *Metrics) RecordRPCRequest() {
+	m.rpcRequests.Add(1)
+}
+
+func (m *Metrics) RecordRPCRetry() {
+	m.rpcRetries.Add(1)
+}
+
+func (m *Metrics) RecordRPCFailure() {
+	m.rpcFailures.Add(1)
+}
+
 func (m *Metrics) Snapshot() MetricsSnapshot {
 	return MetricsSnapshot{
 		HTTPRequests: m.httpRequests.Load(),
@@ -85,6 +105,12 @@ func (m *Metrics) Snapshot() MetricsSnapshot {
 		IndexerErrors: m.indexerErrors.Load(),
 
 		TokenMetadataErrors: m.tokenMetadataErrors.Load(),
+
+		RPCRequests: m.rpcRequests.Load(),
+
+		RPCRetries: m.rpcRetries.Load(),
+
+		RPCFailures: m.rpcFailures.Load(),
 	}
 }
 
@@ -134,6 +160,18 @@ chainwatch_indexer_errors_total %d
 # HELP chainwatch_token_metadata_errors_total Total token metadata lookup errors.
 # TYPE chainwatch_token_metadata_errors_total counter
 chainwatch_token_metadata_errors_total %d
+
+# HELP chainwatch_rpc_requests_total Total Ethereum RPC requests sent.
+# TYPE chainwatch_rpc_requests_total counter
+chainwatch_rpc_requests_total %d
+
+# HELP chainwatch_rpc_retries_total Total Ethereum RPC retries attempted.
+# TYPE chainwatch_rpc_retries_total counter
+chainwatch_rpc_retries_total %d
+
+# HELP chainwatch_rpc_failures_total Total Ethereum RPC operations that failed.
+# TYPE chainwatch_rpc_failures_total counter
+chainwatch_rpc_failures_total %d
 `,
 			snapshot.HTTPRequests,
 			snapshot.HTTPErrors,
@@ -143,6 +181,9 @@ chainwatch_token_metadata_errors_total %d
 			snapshot.IndexedTransfers,
 			snapshot.IndexerErrors,
 			snapshot.TokenMetadataErrors,
+			snapshot.RPCRequests,
+			snapshot.RPCRetries,
+			snapshot.RPCFailures,
 		)
 
 	return err

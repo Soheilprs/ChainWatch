@@ -43,6 +43,13 @@ func TestLoadConfigUsesDefaults(t *testing.T) {
 	if config.MaxReorgDepth != defaultMaxReorgDepth {
 		t.Fatalf("max reorg depth = %d, want %d", config.MaxReorgDepth, defaultMaxReorgDepth)
 	}
+	if config.RPCMaxAttempts != defaultRPCMaxAttempts ||
+		config.RPCInitialBackoff != defaultRPCInitialBackoff ||
+		config.RPCMaxBackoff != defaultRPCMaxBackoff ||
+		config.RPCRequestsPerSecond != defaultRPCRateLimit ||
+		config.RPCBurst != defaultRPCBurst {
+		t.Fatalf("unexpected RPC resilience defaults: %+v", config.RPCResilienceConfig())
+	}
 }
 
 func TestLoadConfigClassifiesConfigurationValidation(t *testing.T) {
@@ -60,15 +67,20 @@ func TestLoadConfigClassifiesConfigurationValidation(t *testing.T) {
 
 func TestLoadConfigReadsOverrides(t *testing.T) {
 	config, err := loadConfig(mapEnvironment(map[string]string{
-		"ETH_RPC_URL":         "http://localhost:8545",
-		"DATABASE_URL":        "postgres://localhost/chainwatch",
-		"HTTP_ADDRESS":        "127.0.0.1:9090",
-		"WORKER_COUNT":        "8",
-		"POLL_INTERVAL":       "750ms",
-		"SHUTDOWN_TIMEOUT":    "12s",
-		"READ_HEADER_TIMEOUT": "3s",
-		"CONFIRMATION_DEPTH":  "18",
-		"MAX_REORG_DEPTH":     "96",
+		"ETH_RPC_URL":             "http://localhost:8545",
+		"DATABASE_URL":            "postgres://localhost/chainwatch",
+		"HTTP_ADDRESS":            "127.0.0.1:9090",
+		"WORKER_COUNT":            "8",
+		"POLL_INTERVAL":           "750ms",
+		"SHUTDOWN_TIMEOUT":        "12s",
+		"READ_HEADER_TIMEOUT":     "3s",
+		"CONFIRMATION_DEPTH":      "18",
+		"MAX_REORG_DEPTH":         "96",
+		"RPC_MAX_ATTEMPTS":        "6",
+		"RPC_INITIAL_BACKOFF":     "125ms",
+		"RPC_MAX_BACKOFF":         "4s",
+		"RPC_REQUESTS_PER_SECOND": "40",
+		"RPC_BURST":               "16",
 	}))
 	if err != nil {
 		t.Fatalf("load config: %v", err)
@@ -80,7 +92,12 @@ func TestLoadConfigReadsOverrides(t *testing.T) {
 		config.ShutdownTimeout != 12*time.Second ||
 		config.ReadHeaderTimeout != 3*time.Second ||
 		config.ConfirmationDepth != 18 ||
-		config.MaxReorgDepth != 96 {
+		config.MaxReorgDepth != 96 ||
+		config.RPCMaxAttempts != 6 ||
+		config.RPCInitialBackoff != 125*time.Millisecond ||
+		config.RPCMaxBackoff != 4*time.Second ||
+		config.RPCRequestsPerSecond != 40 ||
+		config.RPCBurst != 16 {
 		t.Fatalf("unexpected overrides: %+v", config)
 	}
 }
@@ -120,6 +137,11 @@ func TestLoadConfigRejectsInvalidValues(t *testing.T) {
 		{name: "read header zero", key: "READ_HEADER_TIMEOUT", value: "0s", want: "READ_HEADER_TIMEOUT must be greater than zero"},
 		{name: "confirmation syntax", key: "CONFIRMATION_DEPTH", value: "many", want: "parse CONFIRMATION_DEPTH"},
 		{name: "max reorg zero", key: "MAX_REORG_DEPTH", value: "0", want: "MAX_REORG_DEPTH must be greater than zero"},
+		{name: "RPC attempts zero", key: "RPC_MAX_ATTEMPTS", value: "0", want: "RPC max attempts must be greater than zero"},
+		{name: "RPC initial backoff syntax", key: "RPC_INITIAL_BACKOFF", value: "later", want: "parse RPC_INITIAL_BACKOFF"},
+		{name: "RPC backoff ordering", key: "RPC_MAX_BACKOFF", value: "100ms", want: "RPC max backoff must be at least"},
+		{name: "RPC rate zero", key: "RPC_REQUESTS_PER_SECOND", value: "0", want: "RPC requests per second must be greater than zero"},
+		{name: "RPC burst zero", key: "RPC_BURST", value: "0", want: "RPC burst must be greater than zero"},
 	}
 
 	for _, test := range tests {

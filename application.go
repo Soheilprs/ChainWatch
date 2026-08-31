@@ -31,6 +31,15 @@ func RunApplication(ctx context.Context, config Config, logger *slog.Logger) err
 	}
 	defer client.Close()
 
+	resilientClient, err := NewResilientEthereumClient(
+		client,
+		config.RPCResilienceConfig(),
+		metrics,
+	)
+	if err != nil {
+		return fmt.Errorf("create resilient Ethereum client: %w", err)
+	}
+
 	pool, err := pgxpool.New(ctx, config.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("create PostgreSQL pool: %w", err)
@@ -45,11 +54,11 @@ func RunApplication(ctx context.Context, config Config, logger *slog.Logger) err
 	persistence := NewPostgresBlockPersistence(pool, "ethereum_erc20")
 	transferReader := NewPostgresTransferReader(pool)
 	tokenMetadataStore := NewPostgresTokenMetadataStore(pool)
-	tokenMetadataService := NewTokenMetadataService(client, tokenMetadataStore)
+	tokenMetadataService := NewTokenMetadataService(resilientClient, tokenMetadataStore)
 
 	startBlock, err := determineStartBlock(
 		ctx,
-		client,
+		resilientClient,
 		persistence,
 		logger,
 		config.ConfirmationDepth,
@@ -60,12 +69,12 @@ func RunApplication(ctx context.Context, config Config, logger *slog.Logger) err
 	}
 
 	rangeIndexer := NewConcurrentRangeIndexer(
-		client,
+		resilientClient,
 		persistence,
 		config.WorkerCount,
 	)
 	indexer := NewContinuousIndexer(
-		client,
+		resilientClient,
 		rangeIndexer,
 		startBlock,
 		config.PollInterval,
