@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/soheilprs/chainwatch/internal/lifecycle"
 )
 
 // RunApplication composes ChainWatch's runtime dependencies and blocks until
@@ -113,95 +114,61 @@ func RunApplication(ctx context.Context, config Config, logger *slog.Logger) err
 		"httpAddress", server.Addr,
 	)
 
-	type serviceResult struct {
-		name string
-		err  error
+	services := []lifecycle.Service{
+		{
+			Name: "indexer",
+			Run: func(serviceCtx context.Context) error {
+				err := indexer.Run(serviceCtx, func(index BlockTransferIndex) {
+					metrics.RecordIndexedBlock(index.TransferCount())
+					logger.InfoContext(
+						serviceCtx,
+						"indexed block",
+						"blockNumber", index.BlockNumber,
+						"blockHash", string(index.BlockHash),
+						"transfers", index.TransferCount(),
+					)
+				})
+				if err != nil {
+					metrics.RecordIndexerError()
+				}
+				return err
+			},
+		},
+		{
+			Name: "HTTP server",
+			Run: func(context.Context) error {
+				err := server.ListenAndServe()
+				if errors.Is(err, http.ErrServerClosed) {
+					return nil
+				}
+				return err
+			},
+			Shutdown: server.Shutdown,
+		},
 	}
-
-	serviceCount := 2
 	if profilingServer != nil {
-		serviceCount++
-	}
-	resultCh := make(chan serviceResult, serviceCount)
-	go func() {
-		resultCh <- serviceResult{name: "indexer", err: indexer.Run(ctx, func(index BlockTransferIndex) {
-			metrics.RecordIndexedBlock(index.TransferCount())
-			logger.InfoContext(
-				ctx,
-				"indexed block",
-				"blockNumber", index.BlockNumber,
-				"blockHash", string(index.BlockHash),
-				"transfers", index.TransferCount(),
-			)
-		})}
-	}()
-	go func() {
-		err := server.ListenAndServe()
-		if errors.Is(err, http.ErrServerClosed) {
-			err = nil
-		}
-		resultCh <- serviceResult{name: "HTTP server", err: err}
-	}()
-	if profilingServer != nil {
-		go func() {
-			err := profilingServer.ListenAndServe()
-			if errors.Is(err, http.ErrServerClosed) {
-				err = nil
-			}
-			resultCh <- serviceResult{name: "pprof server", err: err}
-		}()
+		services = append(services, lifecycle.Service{
+			Name: "pprof server",
+			Run: func(context.Context) error {
+				err := profilingServer.ListenAndServe()
+				if errors.Is(err, http.ErrServerClosed) {
+					return nil
+				}
+				return err
+			},
+			Shutdown: profilingServer.Shutdown,
+		})
 	}
 
-	var runErr error
-	completedServices := 0
-	recordResult := func(result serviceResult) {
-		completedServices++
-		if result.err == nil {
-			return
-		}
-
-		if result.name == "indexer" {
-			metrics.RecordIndexerError()
-		}
-		logger.Error("service stopped with error", "service", result.name, "error", result.err)
-		runErr = errors.Join(runErr, fmt.Errorf("%s stopped: %w", result.name, result.err))
-	}
-
-	select {
-	case <-ctx.Done():
+	runErr := lifecycle.Run(ctx, config.ShutdownTimeout, services...)
+	if ctx.Err() != nil {
 		logger.Info("shutdown signal received")
-	case result := <-resultCh:
-		recordResult(result)
-	}
-	cancel()
-
-	shutdownCtx, shutdownCancel := context.WithTimeout(
-		context.Background(),
-		config.ShutdownTimeout,
-	)
-	defer shutdownCancel()
-
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		runErr = errors.Join(runErr, fmt.Errorf("shut down HTTP server: %w", err))
-	}
-	if profilingServer != nil {
-		if err := profilingServer.Shutdown(shutdownCtx); err != nil {
-			runErr = errors.Join(runErr, fmt.Errorf("shut down pprof server: %w", err))
-		}
-	}
-
-	for completedServices < serviceCount {
-		select {
-		case result := <-resultCh:
-			recordResult(result)
-		case <-shutdownCtx.Done():
-			runErr = errors.Join(runErr, fmt.Errorf("wait for services to stop: %w", shutdownCtx.Err()))
-			return runErr
-		}
 	}
 
 	if runErr == nil {
 		logger.Info("ChainWatch stopped cleanly")
+	} else {
+		logger.Error("ChainWatch stopped with error", "error", runErr)
 	}
 	return runErr
 }
