@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -16,6 +15,16 @@ type HTTPServer struct {
 
 	logger  *slog.Logger
 	metrics *Metrics
+}
+
+type APIError struct {
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	RequestID string `json:"requestId"`
+}
+
+type APIErrorResponse struct {
+	Error APIError `json:"error"`
 }
 
 func NewHTTPServer(
@@ -86,10 +95,12 @@ func (s *HTTPServer) Handler() http.Handler {
 		s.handleMetrics,
 	)
 
-	return observabilityMiddleware(
-		s.logger,
-		s.metrics,
-		mux,
+	return requestIDMiddleware(
+		observabilityMiddleware(
+			s.logger,
+			s.metrics,
+			recoveryMiddleware(s.logger, mux),
+		),
 	)
 }
 
@@ -98,16 +109,12 @@ func (s *HTTPServer) handleHealth(
 	r *http.Request,
 ) {
 	if r.Method != http.MethodGet {
-		http.Error(
-			w,
-			"method not allowed",
-			http.StatusMethodNotAllowed,
-		)
-
+		s.writeMethodNotAllowed(w, r)
 		return
 	}
 
-	writeJSON(
+	s.writeJSONResponse(
+		r,
 		w,
 		http.StatusOK,
 		map[string]string{
@@ -121,12 +128,7 @@ func (s *HTTPServer) handleMetrics(
 	r *http.Request,
 ) {
 	if r.Method != http.MethodGet {
-		http.Error(
-			w,
-			"method not allowed",
-			http.StatusMethodNotAllowed,
-		)
-
+		s.writeMethodNotAllowed(w, r)
 		return
 	}
 
@@ -152,12 +154,7 @@ func (s *HTTPServer) handleTransfers(
 	r *http.Request,
 ) {
 	if r.Method != http.MethodGet {
-		http.Error(
-			w,
-			"method not allowed",
-			http.StatusMethodNotAllowed,
-		)
-
+		s.writeMethodNotAllowed(w, r)
 		return
 	}
 
@@ -267,7 +264,8 @@ func (s *HTTPServer) handleTransfers(
 			},
 		}
 
-	writeJSON(
+	s.writeJSONResponse(
+		r,
 		w,
 		http.StatusOK,
 		response,
@@ -366,6 +364,7 @@ func parseTransferQuery(
 
 func (s *HTTPServer) writeHTTPError(w http.ResponseWriter, r *http.Request, err error) {
 	status := http.StatusInternalServerError
+	code := "internal_error"
 	message := "internal server error"
 
 	var publicError *PublicError
@@ -373,11 +372,16 @@ func (s *HTTPServer) writeHTTPError(w http.ResponseWriter, r *http.Request, err 
 	case errors.As(err, &publicError):
 		status = publicError.StatusCode
 		message = publicError.Message
+		if status == http.StatusBadRequest {
+			code = "bad_request"
+		}
 	case errors.Is(err, ErrNotFound):
 		status = http.StatusNotFound
+		code = "not_found"
 		message = "resource not found"
 	case errors.Is(err, ErrTemporaryDependency):
 		status = http.StatusServiceUnavailable
+		code = "service_unavailable"
 		message = "service temporarily unavailable"
 	}
 
@@ -385,30 +389,60 @@ func (s *HTTPServer) writeHTTPError(w http.ResponseWriter, r *http.Request, err 
 		s.logger.ErrorContext(r.Context(), "HTTP request failed", "error", err)
 	}
 
-	http.Error(w, message, status)
+	if writeErr := writeAPIError(w, r, status, code, message); writeErr != nil {
+		s.logger.ErrorContext(r.Context(), "failed to write HTTP error", "error", writeErr)
+	}
 }
 
-func writeJSON(
+func (s *HTTPServer) writeMethodNotAllowed(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Allow", http.MethodGet)
+	if err := writeAPIError(
+		w,
+		r,
+		http.StatusMethodNotAllowed,
+		"method_not_allowed",
+		"method not allowed",
+	); err != nil {
+		s.logger.ErrorContext(r.Context(), "failed to write method error", "error", err)
+	}
+}
+
+func (s *HTTPServer) writeJSONResponse(
+	r *http.Request,
 	w http.ResponseWriter,
 	status int,
 	value any,
 ) {
-	w.Header().Set(
-		"Content-Type",
-		"application/json",
-	)
-
-	w.WriteHeader(
-		status,
-	)
-
-	if err :=
-		json.NewEncoder(w).
-			Encode(value); err != nil {
-
-		fmt.Println(
-			"failed to write JSON response:",
-			err,
-		)
+	if err := writeJSON(w, status, value); err != nil {
+		s.logger.ErrorContext(r.Context(), "failed to write JSON response", "error", err)
 	}
+}
+
+func writeAPIError(
+	w http.ResponseWriter,
+	r *http.Request,
+	status int,
+	code string,
+	message string,
+) error {
+	return writeJSON(w, status, APIErrorResponse{
+		Error: APIError{
+			Code:      code,
+			Message:   message,
+			RequestID: requestIDFromContext(r.Context()),
+		},
+	})
+}
+
+func writeJSON(w http.ResponseWriter, status int, value any) error {
+	body, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	body = append(body, '\n')
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_, err = w.Write(body)
+	return err
 }

@@ -15,6 +15,9 @@ const (
 	defaultPollInterval      = 4 * time.Second
 	defaultShutdownTimeout   = 5 * time.Second
 	defaultReadHeaderTimeout = 5 * time.Second
+	defaultReadTimeout       = 15 * time.Second
+	defaultWriteTimeout      = 30 * time.Second
+	defaultIdleTimeout       = 60 * time.Second
 	defaultConfirmationDepth = uint64(12)
 	defaultMaxReorgDepth     = uint64(64)
 	defaultRPCMaxAttempts    = 4
@@ -33,6 +36,9 @@ type Config struct {
 	PollInterval         time.Duration
 	ShutdownTimeout      time.Duration
 	ReadHeaderTimeout    time.Duration
+	ReadTimeout          time.Duration
+	WriteTimeout         time.Duration
+	IdleTimeout          time.Duration
 	ConfirmationDepth    uint64
 	MaxReorgDepth        uint64
 	RPCMaxAttempts       int
@@ -69,6 +75,9 @@ func loadConfig(lookup environmentLookup) (Config, error) {
 		PollInterval:         defaultPollInterval,
 		ShutdownTimeout:      defaultShutdownTimeout,
 		ReadHeaderTimeout:    defaultReadHeaderTimeout,
+		ReadTimeout:          defaultReadTimeout,
+		WriteTimeout:         defaultWriteTimeout,
+		IdleTimeout:          defaultIdleTimeout,
 		ConfirmationDepth:    defaultConfirmationDepth,
 		MaxReorgDepth:        defaultMaxReorgDepth,
 		RPCMaxAttempts:       defaultRPCMaxAttempts,
@@ -102,6 +111,15 @@ func loadConfig(lookup environmentLookup) (Config, error) {
 		return Config{}, err
 	}
 	if config.ReadHeaderTimeout, err = durationEnvironment(lookup, "READ_HEADER_TIMEOUT", config.ReadHeaderTimeout); err != nil {
+		return Config{}, err
+	}
+	if config.ReadTimeout, err = durationEnvironment(lookup, "READ_TIMEOUT", config.ReadTimeout); err != nil {
+		return Config{}, err
+	}
+	if config.WriteTimeout, err = durationEnvironment(lookup, "WRITE_TIMEOUT", config.WriteTimeout); err != nil {
+		return Config{}, err
+	}
+	if config.IdleTimeout, err = durationEnvironment(lookup, "IDLE_TIMEOUT", config.IdleTimeout); err != nil {
 		return Config{}, err
 	}
 	if config.ConfirmationDepth, err = uint64Environment(lookup, "CONFIRMATION_DEPTH", config.ConfirmationDepth); err != nil {
@@ -149,6 +167,12 @@ func (c Config) Validate() error {
 		return NewDomainError(ErrValidation, "validate configuration", errors.New("SHUTDOWN_TIMEOUT must be greater than zero"))
 	case c.ReadHeaderTimeout <= 0:
 		return NewDomainError(ErrValidation, "validate configuration", errors.New("READ_HEADER_TIMEOUT must be greater than zero"))
+	case c.ReadTimeout <= 0:
+		return NewDomainError(ErrValidation, "validate configuration", errors.New("READ_TIMEOUT must be greater than zero"))
+	case c.WriteTimeout <= 0:
+		return NewDomainError(ErrValidation, "validate configuration", errors.New("WRITE_TIMEOUT must be greater than zero"))
+	case c.IdleTimeout <= 0:
+		return NewDomainError(ErrValidation, "validate configuration", errors.New("IDLE_TIMEOUT must be greater than zero"))
 	case c.MaxReorgDepth == 0:
 		return NewDomainError(ErrValidation, "validate configuration", errors.New("MAX_REORG_DEPTH must be greater than zero"))
 	default:

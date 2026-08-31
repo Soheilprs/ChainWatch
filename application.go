@@ -90,6 +90,9 @@ func RunApplication(ctx context.Context, config Config, logger *slog.Logger) err
 		Addr:              config.HTTPAddress,
 		Handler:           api.Handler(),
 		ReadHeaderTimeout: config.ReadHeaderTimeout,
+		ReadTimeout:       config.ReadTimeout,
+		WriteTimeout:      config.WriteTimeout,
+		IdleTimeout:       config.IdleTimeout,
 	}
 
 	logger.InfoContext(
@@ -99,9 +102,14 @@ func RunApplication(ctx context.Context, config Config, logger *slog.Logger) err
 		"httpAddress", server.Addr,
 	)
 
-	errCh := make(chan error, 2)
+	type serviceResult struct {
+		name string
+		err  error
+	}
+
+	resultCh := make(chan serviceResult, 2)
 	go func() {
-		errCh <- indexer.Run(ctx, func(index BlockTransferIndex) {
+		resultCh <- serviceResult{name: "indexer", err: indexer.Run(ctx, func(index BlockTransferIndex) {
 			metrics.RecordIndexedBlock(index.TransferCount())
 			logger.InfoContext(
 				ctx,
@@ -110,27 +118,38 @@ func RunApplication(ctx context.Context, config Config, logger *slog.Logger) err
 				"blockHash", string(index.BlockHash),
 				"transfers", index.TransferCount(),
 			)
-		})
+		})}
 	}()
 	go func() {
 		err := server.ListenAndServe()
 		if errors.Is(err, http.ErrServerClosed) {
 			err = nil
 		}
-		errCh <- err
+		resultCh <- serviceResult{name: "HTTP server", err: err}
 	}()
 
 	var runErr error
+	completedServices := 0
+	recordResult := func(result serviceResult) {
+		completedServices++
+		if result.err == nil {
+			return
+		}
+
+		if result.name == "indexer" {
+			metrics.RecordIndexerError()
+		}
+		logger.Error("service stopped with error", "service", result.name, "error", result.err)
+		runErr = errors.Join(runErr, fmt.Errorf("%s stopped: %w", result.name, result.err))
+	}
+
 	select {
 	case <-ctx.Done():
 		logger.Info("shutdown signal received")
-	case runErr = <-errCh:
-		if runErr != nil {
-			metrics.RecordIndexerError()
-			logger.Error("service stopped with error", "error", runErr)
-		}
-		cancel()
+	case result := <-resultCh:
+		recordResult(result)
 	}
+	cancel()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(
 		context.Background(),
@@ -139,10 +158,22 @@ func RunApplication(ctx context.Context, config Config, logger *slog.Logger) err
 	defer shutdownCancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		return errors.Join(runErr, fmt.Errorf("shut down HTTP server: %w", err))
+		runErr = errors.Join(runErr, fmt.Errorf("shut down HTTP server: %w", err))
 	}
 
-	logger.Info("ChainWatch stopped cleanly")
+	for completedServices < 2 {
+		select {
+		case result := <-resultCh:
+			recordResult(result)
+		case <-shutdownCtx.Done():
+			runErr = errors.Join(runErr, fmt.Errorf("wait for services to stop: %w", shutdownCtx.Err()))
+			return runErr
+		}
+	}
+
+	if runErr == nil {
+		logger.Info("ChainWatch stopped cleanly")
+	}
 	return runErr
 }
 
