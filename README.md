@@ -412,7 +412,7 @@ RPC rate limits
 profiling/debug configuration
 ```
 
-See the configuration implementation for the complete supported environment options.
+See [`internal/config/config.go`](internal/config/config.go) for the complete supported environment options.
 
 Never commit RPC credentials or production secrets to the repository.
 
@@ -452,7 +452,11 @@ Repeat for the remaining migrations in order.
 go run ./cmd/chainwatch
 ```
 
-Depending on the final repository layout, the application entrypoint may also be runnable through the project's configured build command.
+Build the executable package with:
+
+```bash
+go build ./cmd/chainwatch
+```
 
 Expected startup logs include:
 
@@ -483,7 +487,7 @@ docker run \
   chainwatch
 ```
 
-The production image uses a multi-stage build and is designed to run with minimal runtime dependencies.
+The production image uses digest-pinned multi-stage builds, runs as the unprivileged `chainwatch` user, and includes a `/health` check.
 
 ---
 
@@ -636,11 +640,15 @@ A simplified layout looks like:
 │
 ├── internal/
 │   ├── api/
+│   ├── app/
 │   ├── config/
+│   ├── domain/
 │   ├── ethereum/
 │   ├── indexer/
+│   ├── lifecycle/
 │   ├── metadata/
 │   ├── observability/
+│   ├── service/
 │   └── store/
 │
 ├── migrations/
@@ -652,6 +660,8 @@ A simplified layout looks like:
 ├── go.mod
 └── go.sum
 ```
+
+`cmd/chainwatch` is only the process entry point. `internal/app` owns dependency construction, while shared blockchain values and error categories live in `internal/domain`. Interfaces remain near their API, indexer, and metadata consumers; the Ethereum and PostgreSQL packages provide concrete adapters without introducing import cycles.
 
 ---
 

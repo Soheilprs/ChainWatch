@@ -29,7 +29,9 @@ atomic PostgreSQL transaction
   transfers + block history + checkpoint
 ```
 
-`main.go` owns process concerns: structured logging, signal handling, non-zero failure exits, and calling the application bootstrap. `application.go` validates configuration and composes the Ethereum, PostgreSQL, indexing, metadata, API, metrics, and profiling components. `internal/lifecycle` supervises long-running services, cancels siblings after a failure, invokes shutdown hooks concurrently, joins errors, and bounds shutdown time.
+`cmd/chainwatch/main.go` owns process concerns: structured logging, signal handling, non-zero failure exits, and calling the application bootstrap. `internal/app/application.go` validates configuration and composes the Ethereum, PostgreSQL, indexing, metadata, API, metrics, and profiling components. `internal/lifecycle` supervises long-running services, cancels siblings after a failure, invokes shutdown hooks concurrently, joins errors, and bounds shutdown time.
+
+Shared blockchain values, transfer models, checkpoints, and error categories live in `internal/domain`. Consumer-owned interfaces live in `internal/api`, `internal/indexer`, and `internal/metadata`; the `internal/ethereum` and `internal/store` adapters satisfy them without creating reverse imports or cycles.
 
 The domain remains framework-free. Small interfaces are declared near their consumers, while concrete adapters handle Ethereum RPC and PostgreSQL. This keeps indexers and services deterministic under mocks without hiding the transaction and ordering rules behind a web framework or ORM.
 
@@ -107,7 +109,7 @@ The domain remains framework-free. Small interfaces are declared near their cons
 - Reorg reconciliation is bounded by locally retained `indexed_blocks` history and the configured maximum depth.
 - RPC rate limiting is process-local; multiple replicas need a provider-aware shared budget or independently allocated quotas.
 - There is no dead-letter workflow for permanently undecodable provider data and no automatic alternate-provider failover.
-- Most feature code remains in the root package. Further package extraction should follow real ownership/deployment needs, not move types solely for visual symmetry.
+- The legacy in-memory blockchain and synchronization service remain course exercises rather than part of the production composition path.
 - Automated CI, vulnerability scanning, signed images/SBOMs, alert rules, dashboards, backups, and restore drills remain deployment-platform work.
 
 ## 7. Additions for large-scale production
