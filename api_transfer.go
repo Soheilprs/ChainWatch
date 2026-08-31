@@ -13,6 +13,17 @@ type APITransfer struct {
 	Value string `json:"value"`
 }
 
+type APIPagination struct {
+	Limit      int     `json:"limit"`
+	HasMore    bool    `json:"hasMore"`
+	NextCursor *string `json:"nextCursor"`
+}
+
+type APITransferPage struct {
+	Data       []APITransfer `json:"data"`
+	Pagination APIPagination `json:"pagination"`
+}
+
 func apiTransferFromStored(
 	transfer StoredERC20Transfer,
 ) APITransfer {

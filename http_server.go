@@ -87,7 +87,7 @@ func (s *HTTPServer) handleTransfers(
 		return
 	}
 
-	transfers, err :=
+	page, err :=
 		s.transferReader.ListTransfers(
 			r.Context(),
 			query,
@@ -103,22 +103,56 @@ func (s *HTTPServer) handleTransfers(
 		return
 	}
 
-	response :=
-		make(
-			[]APITransfer,
-			0,
-			len(transfers),
-		)
+	data := make(
+		[]APITransfer,
+		0,
+		len(page.Transfers),
+	)
 
-	for _, transfer := range transfers {
+	for _, transfer := range page.Transfers {
 
-		response = append(
-			response,
+		data = append(
+			data,
 			apiTransferFromStored(
 				transfer,
 			),
 		)
 	}
+
+	var nextCursor *string
+
+	if page.NextCursor != nil {
+		encodedCursor, err :=
+			EncodeTransferCursor(
+				*page.NextCursor,
+			)
+
+		if err != nil {
+			http.Error(
+				w,
+				"failed to encode pagination cursor",
+				http.StatusInternalServerError,
+			)
+
+			return
+		}
+
+		nextCursor =
+			&encodedCursor
+	}
+
+	response :=
+		APITransferPage{
+			Data: data,
+
+			Pagination: APIPagination{
+				Limit: query.Limit,
+
+				HasMore: page.NextCursor != nil,
+
+				NextCursor: nextCursor,
+			},
+		}
 
 	writeJSON(
 		w,
@@ -195,8 +229,32 @@ func parseTransferQuery(
 				)
 		}
 
+		if limit > 1000 {
+			return TransferQuery{},
+				errors.New(
+					"limit cannot exceed 1000",
+				)
+		}
+
 		query.Limit =
 			limit
+	}
+
+	if rawCursor :=
+		values.Get("cursor"); rawCursor != "" {
+
+		cursor, err :=
+			DecodeTransferCursor(
+				rawCursor,
+			)
+
+		if err != nil {
+			return TransferQuery{},
+				ErrInvalidTransferCursor
+		}
+
+		query.Cursor =
+			&cursor
 	}
 
 	return query, nil

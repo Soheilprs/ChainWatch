@@ -26,7 +26,7 @@ func NewPostgresTransferReader(
 func (r *PostgresTransferReader) ListTransfers(
 	ctx context.Context,
 	query TransferQuery,
-) ([]StoredERC20Transfer, error) {
+) (TransferPage, error) {
 	limit := query.Limit
 
 	if limit <= 0 {
@@ -60,54 +60,60 @@ func (r *PostgresTransferReader) ListTransfers(
 		0,
 	)
 
-	addCondition := func(
-		condition string,
+	addArgument := func(
 		value any,
-	) {
+	) string {
 		args = append(
 			args,
 			value,
 		)
 
+		return fmt.Sprintf(
+			"$%d",
+			len(args),
+		)
+	}
+
+	if query.BlockNumber != nil {
 		placeholder :=
-			fmt.Sprintf(
-				"$%d",
-				len(args),
+			addArgument(
+				int64(
+					*query.BlockNumber,
+				),
 			)
 
 		conditions = append(
 			conditions,
 			fmt.Sprintf(
-				condition,
+				"block_number = %s",
 				placeholder,
 			),
 		)
 	}
 
-	if query.BlockNumber != nil {
-		addCondition(
-			"block_number = %s",
-			int64(*query.BlockNumber),
-		)
-	}
-
 	if query.Token != nil {
-		addCondition(
-			"LOWER(token_address) = LOWER(%s)",
-			string(*query.Token),
+		placeholder :=
+			addArgument(
+				string(
+					*query.Token,
+				),
+			)
+
+		conditions = append(
+			conditions,
+			fmt.Sprintf(
+				"LOWER(token_address) = LOWER(%s)",
+				placeholder,
+			),
 		)
 	}
 
 	if query.Address != nil {
-		args = append(
-			args,
-			string(*query.Address),
-		)
-
 		placeholder :=
-			fmt.Sprintf(
-				"$%d",
-				len(args),
+			addArgument(
+				string(
+					*query.Address,
+				),
 			)
 
 		conditions = append(
@@ -124,6 +130,40 @@ func (r *PostgresTransferReader) ListTransfers(
 		)
 	}
 
+	if query.Cursor != nil {
+		blockPlaceholder :=
+			addArgument(
+				int64(
+					query.Cursor.
+						BlockNumber,
+				),
+			)
+
+		logPlaceholder :=
+			addArgument(
+				int64(
+					query.Cursor.
+						LogIndex,
+				),
+			)
+
+		conditions = append(
+			conditions,
+			fmt.Sprintf(
+				`(
+					block_number < %s
+					OR (
+						block_number = %s
+						AND log_index < %s
+					)
+				)`,
+				blockPlaceholder,
+				blockPlaceholder,
+				logPlaceholder,
+			),
+		)
+	}
+
 	if len(conditions) > 0 {
 		sqlQuery +=
 			" WHERE " +
@@ -133,22 +173,19 @@ func (r *PostgresTransferReader) ListTransfers(
 				)
 	}
 
-	args = append(
-		args,
-		limit,
-	)
+	queryLimit :=
+		limit + 1
 
 	limitPlaceholder :=
-		fmt.Sprintf(
-			"$%d",
-			len(args),
+		addArgument(
+			queryLimit,
 		)
 
 	sqlQuery += fmt.Sprintf(
 		`
 		ORDER BY
 			block_number DESC,
-			log_index ASC
+			log_index DESC
 		LIMIT %s
 		`,
 		limitPlaceholder,
@@ -162,10 +199,11 @@ func (r *PostgresTransferReader) ListTransfers(
 		)
 
 	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to query transfers: %w",
-			err,
-		)
+		return TransferPage{},
+			fmt.Errorf(
+				"failed to query transfers: %w",
+				err,
+			)
 	}
 
 	defer rows.Close()
@@ -173,6 +211,7 @@ func (r *PostgresTransferReader) ListTransfers(
 	transfers := make(
 		[]StoredERC20Transfer,
 		0,
+		queryLimit,
 	)
 
 	for rows.Next() {
@@ -199,10 +238,27 @@ func (r *PostgresTransferReader) ListTransfers(
 		)
 
 		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to scan transfer: %w",
-				err,
-			)
+			return TransferPage{},
+				fmt.Errorf(
+					"failed to scan transfer: %w",
+					err,
+				)
+		}
+
+		if blockNumber < 0 {
+			return TransferPage{},
+				fmt.Errorf(
+					"invalid negative block number: %d",
+					blockNumber,
+				)
+		}
+
+		if logIndex < 0 {
+			return TransferPage{},
+				fmt.Errorf(
+					"invalid negative log index: %d",
+					logIndex,
+				)
 		}
 
 		value, ok :=
@@ -212,10 +268,11 @@ func (r *PostgresTransferReader) ListTransfers(
 			)
 
 		if !ok {
-			return nil, fmt.Errorf(
-				"invalid transfer value %q",
-				valueString,
-			)
+			return TransferPage{},
+				fmt.Errorf(
+					"invalid transfer value %q",
+					valueString,
+				)
 		}
 
 		transfers = append(
@@ -223,7 +280,9 @@ func (r *PostgresTransferReader) ListTransfers(
 			StoredERC20Transfer{
 				BlockNumber: uint64(blockNumber),
 
-				BlockHash: BlockHash(blockHash),
+				BlockHash: BlockHash(
+					blockHash,
+				),
 
 				TransactionHash: TransactionHash(
 					transactionHash,
@@ -243,11 +302,33 @@ func (r *PostgresTransferReader) ListTransfers(
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf(
-			"failed while reading transfers: %w",
-			err,
-		)
+		return TransferPage{},
+			fmt.Errorf(
+				"failed while reading transfers: %w",
+				err,
+			)
 	}
 
-	return transfers, nil
+	page := TransferPage{
+		Transfers: transfers,
+	}
+
+	if len(transfers) > limit {
+		page.Transfers =
+			transfers[:limit]
+
+		lastTransfer :=
+			page.Transfers[len(page.Transfers)-1]
+
+		page.NextCursor =
+			&TransferCursor{
+				BlockNumber: lastTransfer.
+					BlockNumber,
+
+				LogIndex: lastTransfer.
+					LogIndex,
+			}
+	}
+
+	return page, nil
 }

@@ -11,8 +11,8 @@ import (
 )
 
 type MockTransferReader struct {
-	Transfers []StoredERC20Transfer
-	Err       error
+	Page TransferPage
+	Err  error
 
 	Query TransferQuery
 }
@@ -22,14 +22,15 @@ var _ TransferReader = (*MockTransferReader)(nil)
 func (m *MockTransferReader) ListTransfers(
 	ctx context.Context,
 	query TransferQuery,
-) ([]StoredERC20Transfer, error) {
+) (TransferPage, error) {
 	m.Query = query
 
 	if m.Err != nil {
-		return nil, m.Err
+		return TransferPage{},
+			m.Err
 	}
 
-	return m.Transfers, nil
+	return m.Page, nil
 }
 
 func TestHTTPServerHealth(
@@ -74,25 +75,27 @@ func TestHTTPServerListTransfers(
 ) {
 	reader :=
 		&MockTransferReader{
-			Transfers: []StoredERC20Transfer{
-				{
-					BlockNumber: 100,
+			Page: TransferPage{
+				Transfers: []StoredERC20Transfer{
+					{
+						BlockNumber: 100,
 
-					BlockHash: "0xblock",
+						BlockHash: "0xblock",
 
-					TransactionHash: "0xtx",
+						TransactionHash: "0xtx",
 
-					LogIndex: 2,
+						LogIndex: 2,
 
-					Token: "0xtoken",
+						Token: "0xtoken",
 
-					From: "0xfrom",
+						From: "0xfrom",
 
-					To: "0xto",
+						To: "0xto",
 
-					Value: big.NewInt(
-						123,
-					),
+						Value: big.NewInt(
+							123,
+						),
+					},
 				},
 			},
 		}
@@ -127,12 +130,12 @@ func TestHTTPServerListTransfers(
 		)
 	}
 
-	var transfers []APITransfer
+	var page APITransferPage
 
 	err :=
 		json.Unmarshal(
 			response.Body.Bytes(),
-			&transfers,
+			&page,
 		)
 
 	if err != nil {
@@ -142,17 +145,161 @@ func TestHTTPServerListTransfers(
 		)
 	}
 
-	if len(transfers) != 1 {
+	if len(page.Data) != 1 {
 		t.Fatalf(
 			"expected 1 transfer, got %d",
-			len(transfers),
+			len(page.Data),
 		)
 	}
 
-	if transfers[0].Value != "123" {
+	if page.Data[0].Value != "123" {
 		t.Fatalf(
 			"expected value 123, got %s",
-			transfers[0].Value,
+			page.Data[0].Value,
+		)
+	}
+
+	if page.Pagination.Limit != 100 {
+		t.Fatalf(
+			"expected default limit 100, got %d",
+			page.Pagination.Limit,
+		)
+	}
+
+	if page.Pagination.HasMore {
+		t.Fatal(
+			"expected hasMore to be false",
+		)
+	}
+
+	if page.Pagination.NextCursor != nil {
+		t.Fatal(
+			"expected nextCursor to be nil",
+		)
+	}
+}
+
+func TestHTTPServerReturnsNextCursor(
+	t *testing.T,
+) {
+	cursor :=
+		TransferCursor{
+			BlockNumber: 100,
+			LogIndex:    20,
+		}
+
+	reader :=
+		&MockTransferReader{
+			Page: TransferPage{
+				Transfers: []StoredERC20Transfer{
+					{
+						BlockNumber: 100,
+
+						BlockHash: "0xblock",
+
+						TransactionHash: "0xtx",
+
+						LogIndex: 20,
+
+						Token: "0xtoken",
+
+						From: "0xfrom",
+
+						To: "0xto",
+
+						Value: big.NewInt(
+							123,
+						),
+					},
+				},
+
+				NextCursor: &cursor,
+			},
+		}
+
+	server :=
+		NewHTTPServer(
+			reader,
+		)
+
+	request :=
+		httptest.NewRequest(
+			http.MethodGet,
+			"/transfers?limit=1",
+			nil,
+		)
+
+	response :=
+		httptest.NewRecorder()
+
+	server.Handler().
+		ServeHTTP(
+			response,
+			request,
+		)
+
+	if response.Code !=
+		http.StatusOK {
+
+		t.Fatalf(
+			"expected status 200, got %d",
+			response.Code,
+		)
+	}
+
+	var page APITransferPage
+
+	err :=
+		json.Unmarshal(
+			response.Body.Bytes(),
+			&page,
+		)
+
+	if err != nil {
+		t.Fatalf(
+			"failed to decode response: %v",
+			err,
+		)
+	}
+
+	if !page.Pagination.HasMore {
+		t.Fatal(
+			"expected hasMore to be true",
+		)
+	}
+
+	if page.Pagination.NextCursor ==
+		nil {
+
+		t.Fatal(
+			"expected nextCursor",
+		)
+	}
+
+	decoded, err :=
+		DecodeTransferCursor(
+			*page.Pagination.
+				NextCursor,
+		)
+
+	if err != nil {
+		t.Fatalf(
+			"failed to decode returned cursor: %v",
+			err,
+		)
+	}
+
+	if decoded.BlockNumber != 100 {
+		t.Fatalf(
+			"expected cursor block 100, got %d",
+			decoded.BlockNumber,
+		)
+	}
+
+	if decoded.LogIndex != 20 {
+		t.Fatalf(
+			"expected cursor log index 20, got %d",
+			decoded.LogIndex,
 		)
 	}
 }
@@ -252,6 +399,119 @@ func TestHTTPServerParsesTransferFilters(
 	}
 }
 
+func TestHTTPServerParsesCursor(
+	t *testing.T,
+) {
+	reader :=
+		&MockTransferReader{}
+
+	server :=
+		NewHTTPServer(
+			reader,
+		)
+
+	cursor, err :=
+		EncodeTransferCursor(
+			TransferCursor{
+				BlockNumber: 500,
+				LogIndex:    12,
+			},
+		)
+
+	if err != nil {
+		t.Fatalf(
+			"failed to encode cursor: %v",
+			err,
+		)
+	}
+
+	request :=
+		httptest.NewRequest(
+			http.MethodGet,
+			"/transfers?cursor="+cursor,
+			nil,
+		)
+
+	response :=
+		httptest.NewRecorder()
+
+	server.Handler().
+		ServeHTTP(
+			response,
+			request,
+		)
+
+	if response.Code !=
+		http.StatusOK {
+
+		t.Fatalf(
+			"expected status 200, got %d",
+			response.Code,
+		)
+	}
+
+	if reader.Query.Cursor == nil {
+		t.Fatal(
+			"expected cursor",
+		)
+	}
+
+	if reader.Query.Cursor.
+		BlockNumber != 500 {
+
+		t.Fatalf(
+			"expected cursor block 500, got %d",
+			reader.Query.Cursor.BlockNumber,
+		)
+	}
+
+	if reader.Query.Cursor.
+		LogIndex != 12 {
+
+		t.Fatalf(
+			"expected cursor log index 12, got %d",
+			reader.Query.Cursor.LogIndex,
+		)
+	}
+}
+
+func TestHTTPServerRejectsInvalidCursor(
+	t *testing.T,
+) {
+	reader :=
+		&MockTransferReader{}
+
+	server :=
+		NewHTTPServer(
+			reader,
+		)
+
+	request :=
+		httptest.NewRequest(
+			http.MethodGet,
+			"/transfers?cursor=this-is-not-a-valid-cursor",
+			nil,
+		)
+
+	response :=
+		httptest.NewRecorder()
+
+	server.Handler().
+		ServeHTTP(
+			response,
+			request,
+		)
+
+	if response.Code !=
+		http.StatusBadRequest {
+
+		t.Fatalf(
+			"expected status 400, got %d",
+			response.Code,
+		)
+	}
+}
+
 func TestHTTPServerRejectsInvalidBlock(
 	t *testing.T,
 ) {
@@ -304,6 +564,43 @@ func TestHTTPServerRejectsInvalidLimit(
 		httptest.NewRequest(
 			http.MethodGet,
 			"/transfers?limit=-5",
+			nil,
+		)
+
+	response :=
+		httptest.NewRecorder()
+
+	server.Handler().
+		ServeHTTP(
+			response,
+			request,
+		)
+
+	if response.Code !=
+		http.StatusBadRequest {
+
+		t.Fatalf(
+			"expected status 400, got %d",
+			response.Code,
+		)
+	}
+}
+
+func TestHTTPServerRejectsLimitAboveMaximum(
+	t *testing.T,
+) {
+	reader :=
+		&MockTransferReader{}
+
+	server :=
+		NewHTTPServer(
+			reader,
+		)
+
+	request :=
+		httptest.NewRequest(
+			http.MethodGet,
+			"/transfers?limit=1001",
 			nil,
 		)
 
