@@ -17,6 +17,28 @@ type MockTransferReader struct {
 	Query TransferQuery
 }
 
+type MockTokenMetadataProvider struct {
+	Metadata TokenMetadata
+	Err      error
+	Calls    int
+}
+
+var _ TokenMetadataProvider = (*MockTokenMetadataProvider)(nil)
+
+func (m *MockTokenMetadataProvider) GetTokenMetadata(
+	ctx context.Context,
+	address Address,
+) (TokenMetadata, error) {
+	m.Calls++
+
+	if m.Err != nil {
+		return TokenMetadata{},
+			m.Err
+	}
+
+	return m.Metadata, nil
+}
+
 var _ TransferReader = (*MockTransferReader)(nil)
 
 func (m *MockTransferReader) ListTransfers(
@@ -42,6 +64,7 @@ func TestHTTPServerHealth(
 	server :=
 		NewHTTPServer(
 			reader,
+			nil,
 		)
 
 	request :=
@@ -103,6 +126,7 @@ func TestHTTPServerListTransfers(
 	server :=
 		NewHTTPServer(
 			reader,
+			nil,
 		)
 
 	request :=
@@ -220,6 +244,7 @@ func TestHTTPServerReturnsNextCursor(
 	server :=
 		NewHTTPServer(
 			reader,
+			nil,
 		)
 
 	request :=
@@ -313,6 +338,7 @@ func TestHTTPServerParsesTransferFilters(
 	server :=
 		NewHTTPServer(
 			reader,
+			nil,
 		)
 
 	request :=
@@ -408,6 +434,7 @@ func TestHTTPServerParsesCursor(
 	server :=
 		NewHTTPServer(
 			reader,
+			nil,
 		)
 
 	cursor, err :=
@@ -484,6 +511,7 @@ func TestHTTPServerRejectsInvalidCursor(
 	server :=
 		NewHTTPServer(
 			reader,
+			nil,
 		)
 
 	request :=
@@ -521,6 +549,7 @@ func TestHTTPServerRejectsInvalidBlock(
 	server :=
 		NewHTTPServer(
 			reader,
+			nil,
 		)
 
 	request :=
@@ -558,6 +587,7 @@ func TestHTTPServerRejectsInvalidLimit(
 	server :=
 		NewHTTPServer(
 			reader,
+			nil,
 		)
 
 	request :=
@@ -595,6 +625,7 @@ func TestHTTPServerRejectsLimitAboveMaximum(
 	server :=
 		NewHTTPServer(
 			reader,
+			nil,
 		)
 
 	request :=
@@ -632,6 +663,7 @@ func TestHTTPServerRejectsPostTransfers(
 	server :=
 		NewHTTPServer(
 			reader,
+			nil,
 		)
 
 	request :=
@@ -673,6 +705,7 @@ func TestHTTPServerHandlesReaderError(
 	server :=
 		NewHTTPServer(
 			reader,
+			nil,
 		)
 
 	request :=
@@ -697,6 +730,254 @@ func TestHTTPServerHandlesReaderError(
 		t.Fatalf(
 			"expected status 500, got %d",
 			response.Code,
+		)
+	}
+}
+
+func TestHTTPServerEnrichesTransferWithTokenMetadata(
+	t *testing.T,
+) {
+	reader :=
+		&MockTransferReader{
+			Page: TransferPage{
+				Transfers: []StoredERC20Transfer{
+					{
+						BlockNumber: 100,
+
+						BlockHash: "0xblock",
+
+						TransactionHash: "0xtx",
+
+						LogIndex: 1,
+
+						Token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+
+						From: "0xfrom",
+
+						To: "0xto",
+
+						Value: big.NewInt(
+							1881330000,
+						),
+					},
+				},
+			},
+		}
+
+	metadata :=
+		&MockTokenMetadataProvider{
+			Metadata: TokenMetadata{
+				Address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+
+				Name: "USD Coin",
+
+				Symbol: "USDC",
+
+				Decimals: 6,
+			},
+		}
+
+	server :=
+		NewHTTPServer(
+			reader,
+			metadata,
+		)
+
+	request :=
+		httptest.NewRequest(
+			http.MethodGet,
+			"/transfers?limit=1",
+			nil,
+		)
+
+	response :=
+		httptest.NewRecorder()
+
+	server.Handler().
+		ServeHTTP(
+			response,
+			request,
+		)
+
+	if response.Code !=
+		http.StatusOK {
+
+		t.Fatalf(
+			"expected status 200, got %d",
+			response.Code,
+		)
+	}
+
+	var page APITransferPage
+
+	err :=
+		json.Unmarshal(
+			response.Body.Bytes(),
+			&page,
+		)
+
+	if err != nil {
+		t.Fatalf(
+			"failed to decode response: %v",
+			err,
+		)
+	}
+
+	if len(page.Data) != 1 {
+		t.Fatalf(
+			"expected 1 transfer, got %d",
+			len(page.Data),
+		)
+	}
+
+	transfer :=
+		page.Data[0]
+
+	if transfer.FormattedValue == nil {
+		t.Fatal(
+			"expected formatted value",
+		)
+	}
+
+	if *transfer.FormattedValue !=
+		"1881.33" {
+
+		t.Fatalf(
+			"expected 1881.33, got %s",
+			*transfer.FormattedValue,
+		)
+	}
+
+	if transfer.TokenMetadata == nil {
+		t.Fatal(
+			"expected token metadata",
+		)
+	}
+
+	if transfer.TokenMetadata.Symbol !=
+		"USDC" {
+
+		t.Fatalf(
+			"expected USDC, got %s",
+			transfer.TokenMetadata.Symbol,
+		)
+	}
+
+	if transfer.TokenMetadata.Decimals !=
+		6 {
+
+		t.Fatalf(
+			"expected 6 decimals, got %d",
+			transfer.TokenMetadata.Decimals,
+		)
+	}
+}
+
+func TestHTTPServerStillReturnsTransferWhenMetadataFails(
+	t *testing.T,
+) {
+	reader :=
+		&MockTransferReader{
+			Page: TransferPage{
+				Transfers: []StoredERC20Transfer{
+					{
+						BlockNumber: 100,
+
+						BlockHash: "0xblock",
+
+						TransactionHash: "0xtx",
+
+						LogIndex: 1,
+
+						Token: "0x1111111111111111111111111111111111111111",
+
+						From: "0xfrom",
+
+						To: "0xto",
+
+						Value: big.NewInt(
+							123,
+						),
+					},
+				},
+			},
+		}
+
+	metadata :=
+		&MockTokenMetadataProvider{
+			Err: errors.New(
+				"metadata unavailable",
+			),
+		}
+
+	server :=
+		NewHTTPServer(
+			reader,
+			metadata,
+		)
+
+	request :=
+		httptest.NewRequest(
+			http.MethodGet,
+			"/transfers",
+			nil,
+		)
+
+	response :=
+		httptest.NewRecorder()
+
+	server.Handler().
+		ServeHTTP(
+			response,
+			request,
+		)
+
+	if response.Code !=
+		http.StatusOK {
+
+		t.Fatalf(
+			"expected status 200, got %d",
+			response.Code,
+		)
+	}
+
+	var page APITransferPage
+
+	err :=
+		json.Unmarshal(
+			response.Body.Bytes(),
+			&page,
+		)
+
+	if err != nil {
+		t.Fatalf(
+			"failed to decode response: %v",
+			err,
+		)
+	}
+
+	if len(page.Data) != 1 {
+		t.Fatalf(
+			"expected 1 transfer, got %d",
+			len(page.Data),
+		)
+	}
+
+	if page.Data[0].
+		TokenMetadata != nil {
+
+		t.Fatal(
+			"expected metadata to be omitted",
+		)
+	}
+
+	if page.Data[0].
+		Value != "123" {
+
+		t.Fatalf(
+			"expected raw value 123, got %s",
+			page.Data[0].
+				Value,
 		)
 	}
 }

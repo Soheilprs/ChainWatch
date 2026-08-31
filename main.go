@@ -75,7 +75,8 @@ func main() {
 
 	defer pool.Close()
 
-	if err := pool.Ping(ctx); err != nil {
+	if err :=
+		pool.Ping(ctx); err != nil {
 
 		fmt.Println(
 			"Failed to connect to PostgreSQL:",
@@ -103,6 +104,17 @@ func main() {
 	transferReader :=
 		NewPostgresTransferReader(
 			pool,
+		)
+
+	tokenMetadataStore :=
+		NewPostgresTokenMetadataStore(
+			pool,
+		)
+
+	tokenMetadataService :=
+		NewTokenMetadataService(
+			client,
+			tokenMetadataStore,
 		)
 
 	checkpoint, exists, err :=
@@ -174,11 +186,13 @@ func main() {
 	api :=
 		NewHTTPServer(
 			transferReader,
+			tokenMetadataService,
 		)
 
 	server :=
 		&http.Server{
-			Addr:    ":8080",
+			Addr: ":8080",
+
 			Handler: api.Handler(),
 		}
 

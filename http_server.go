@@ -9,14 +9,18 @@ import (
 )
 
 type HTTPServer struct {
-	transferReader TransferReader
+	transferReader        TransferReader
+	tokenMetadataProvider TokenMetadataProvider
 }
 
 func NewHTTPServer(
 	transferReader TransferReader,
+	tokenMetadataProvider TokenMetadataProvider,
 ) *HTTPServer {
 	return &HTTPServer{
 		transferReader: transferReader,
+
+		tokenMetadataProvider: tokenMetadataProvider,
 	}
 }
 
@@ -111,11 +115,31 @@ func (s *HTTPServer) handleTransfers(
 
 	for _, transfer := range page.Transfers {
 
-		data = append(
-			data,
+		apiTransfer :=
 			apiTransferFromStored(
 				transfer,
-			),
+			)
+
+		if s.tokenMetadataProvider != nil {
+			metadata, err :=
+				s.tokenMetadataProvider.
+					GetTokenMetadata(
+						r.Context(),
+						transfer.Token,
+					)
+
+			if err == nil {
+				enrichAPITransferWithMetadata(
+					&apiTransfer,
+					transfer,
+					metadata,
+				)
+			}
+		}
+
+		data = append(
+			data,
+			apiTransfer,
 		)
 	}
 
@@ -167,9 +191,10 @@ func parseTransferQuery(
 	values :=
 		r.URL.Query()
 
-	query := TransferQuery{
-		Limit: 100,
-	}
+	query :=
+		TransferQuery{
+			Limit: 100,
+		}
 
 	if rawBlock :=
 		values.Get("block"); rawBlock != "" {

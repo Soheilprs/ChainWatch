@@ -1,5 +1,11 @@
 package main
 
+type APITokenMetadata struct {
+	Name     string `json:"name"`
+	Symbol   string `json:"symbol"`
+	Decimals uint8  `json:"decimals"`
+}
+
 type APITransfer struct {
 	BlockNumber     uint64 `json:"blockNumber"`
 	BlockHash       string `json:"blockHash"`
@@ -11,6 +17,10 @@ type APITransfer struct {
 	To    string `json:"to"`
 
 	Value string `json:"value"`
+
+	FormattedValue *string `json:"formattedValue,omitempty"`
+
+	TokenMetadata *APITokenMetadata `json:"tokenMetadata,omitempty"`
 }
 
 type APIPagination struct {
@@ -61,4 +71,28 @@ func apiTransferFromStored(
 
 		Value: value,
 	}
+}
+
+func enrichAPITransferWithMetadata(
+	apiTransfer *APITransfer,
+	transfer StoredERC20Transfer,
+	metadata TokenMetadata,
+) {
+	formatted :=
+		FormatTokenAmount(
+			transfer.Value,
+			metadata.Decimals,
+		)
+
+	apiTransfer.FormattedValue =
+		&formatted
+
+	apiTransfer.TokenMetadata =
+		&APITokenMetadata{
+			Name: metadata.Name,
+
+			Symbol: metadata.Symbol,
+
+			Decimals: metadata.Decimals,
+		}
 }
