@@ -15,6 +15,8 @@ const (
 	defaultPollInterval      = 4 * time.Second
 	defaultShutdownTimeout   = 5 * time.Second
 	defaultReadHeaderTimeout = 5 * time.Second
+	defaultConfirmationDepth = uint64(12)
+	defaultMaxReorgDepth     = uint64(64)
 )
 
 // Config contains all runtime settings needed to start ChainWatch.
@@ -26,6 +28,8 @@ type Config struct {
 	PollInterval      time.Duration
 	ShutdownTimeout   time.Duration
 	ReadHeaderTimeout time.Duration
+	ConfirmationDepth uint64
+	MaxReorgDepth     uint64
 }
 
 // LoadConfig reads and validates ChainWatch configuration from the process
@@ -55,6 +59,8 @@ func loadConfig(lookup environmentLookup) (Config, error) {
 		PollInterval:      defaultPollInterval,
 		ShutdownTimeout:   defaultShutdownTimeout,
 		ReadHeaderTimeout: defaultReadHeaderTimeout,
+		ConfirmationDepth: defaultConfirmationDepth,
+		MaxReorgDepth:     defaultMaxReorgDepth,
 	}
 
 	var err error
@@ -83,6 +89,12 @@ func loadConfig(lookup environmentLookup) (Config, error) {
 	if config.ReadHeaderTimeout, err = durationEnvironment(lookup, "READ_HEADER_TIMEOUT", config.ReadHeaderTimeout); err != nil {
 		return Config{}, err
 	}
+	if config.ConfirmationDepth, err = uint64Environment(lookup, "CONFIRMATION_DEPTH", config.ConfirmationDepth); err != nil {
+		return Config{}, err
+	}
+	if config.MaxReorgDepth, err = uint64Environment(lookup, "MAX_REORG_DEPTH", config.MaxReorgDepth); err != nil {
+		return Config{}, err
+	}
 
 	if err := config.Validate(); err != nil {
 		return Config{}, err
@@ -107,9 +119,28 @@ func (c Config) Validate() error {
 		return NewDomainError(ErrValidation, "validate configuration", errors.New("SHUTDOWN_TIMEOUT must be greater than zero"))
 	case c.ReadHeaderTimeout <= 0:
 		return NewDomainError(ErrValidation, "validate configuration", errors.New("READ_HEADER_TIMEOUT must be greater than zero"))
+	case c.MaxReorgDepth == 0:
+		return NewDomainError(ErrValidation, "validate configuration", errors.New("MAX_REORG_DEPTH must be greater than zero"))
 	default:
 		return nil
 	}
+}
+
+func uint64Environment(
+	lookup environmentLookup,
+	name string,
+	defaultValue uint64,
+) (uint64, error) {
+	value, exists := optionalEnvironment(lookup, name)
+	if !exists {
+		return defaultValue, nil
+	}
+
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return 0, NewDomainError(ErrValidation, "parse "+name, err)
+	}
+	return parsed, nil
 }
 
 func requiredEnvironment(lookup environmentLookup, name string) (string, error) {

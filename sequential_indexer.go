@@ -74,6 +74,11 @@ func (i *SequentialIndexer) IndexRange(
 			checkpoint.Number + 1
 	}
 
+	expectedParentHash := BlockHash("")
+	if exists && checkpoint.Number+1 == nextBlock {
+		expectedParentHash = checkpoint.Hash
+	}
+
 	results :=
 		make(
 			[]BlockTransferIndex,
@@ -109,6 +114,14 @@ func (i *SequentialIndexer) IndexRange(
 			)
 		}
 
+		if err := validateParentHash(
+			index.BlockNumber,
+			index.ParentHash,
+			expectedParentHash,
+		); err != nil {
+			return nil, err
+		}
+
 		err = i.persistence.SaveIndexedBlock(ctx, index)
 		if err != nil {
 			return nil, fmt.Errorf(
@@ -117,6 +130,7 @@ func (i *SequentialIndexer) IndexRange(
 				err,
 			)
 		}
+		expectedParentHash = index.BlockHash
 
 		results = append(
 			results,

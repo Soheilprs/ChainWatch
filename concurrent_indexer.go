@@ -76,6 +76,11 @@ func (c *ConcurrentRangeIndexer) IndexRange(
 			checkpoint.Number + 1
 	}
 
+	expectedParentHash := BlockHash("")
+	if exists && checkpoint.Number+1 == nextBlock {
+		expectedParentHash = checkpoint.Hash
+	}
+
 	workerCtx, cancel :=
 		context.WithCancel(ctx)
 
@@ -173,6 +178,15 @@ func (c *ConcurrentRangeIndexer) IndexRange(
 					nextResult.err
 			}
 
+			if err := validateParentHash(
+				nextResult.index.BlockNumber,
+				nextResult.index.ParentHash,
+				expectedParentHash,
+			); err != nil {
+				cancel()
+				return nil, err
+			}
+
 			err := c.persistence.SaveIndexedBlock(ctx, nextResult.index)
 			if err != nil {
 				cancel()
@@ -183,6 +197,7 @@ func (c *ConcurrentRangeIndexer) IndexRange(
 					err,
 				)
 			}
+			expectedParentHash = nextResult.index.BlockHash
 
 			orderedResults =
 				append(

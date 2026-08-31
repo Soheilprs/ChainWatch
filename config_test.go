@@ -37,6 +37,12 @@ func TestLoadConfigUsesDefaults(t *testing.T) {
 	if config.ReadHeaderTimeout != defaultReadHeaderTimeout {
 		t.Fatalf("read header timeout = %s, want %s", config.ReadHeaderTimeout, defaultReadHeaderTimeout)
 	}
+	if config.ConfirmationDepth != defaultConfirmationDepth {
+		t.Fatalf("confirmation depth = %d, want %d", config.ConfirmationDepth, defaultConfirmationDepth)
+	}
+	if config.MaxReorgDepth != defaultMaxReorgDepth {
+		t.Fatalf("max reorg depth = %d, want %d", config.MaxReorgDepth, defaultMaxReorgDepth)
+	}
 }
 
 func TestLoadConfigClassifiesConfigurationValidation(t *testing.T) {
@@ -61,6 +67,8 @@ func TestLoadConfigReadsOverrides(t *testing.T) {
 		"POLL_INTERVAL":       "750ms",
 		"SHUTDOWN_TIMEOUT":    "12s",
 		"READ_HEADER_TIMEOUT": "3s",
+		"CONFIRMATION_DEPTH":  "18",
+		"MAX_REORG_DEPTH":     "96",
 	}))
 	if err != nil {
 		t.Fatalf("load config: %v", err)
@@ -70,7 +78,9 @@ func TestLoadConfigReadsOverrides(t *testing.T) {
 		config.WorkerCount != 8 ||
 		config.PollInterval != 750*time.Millisecond ||
 		config.ShutdownTimeout != 12*time.Second ||
-		config.ReadHeaderTimeout != 3*time.Second {
+		config.ReadHeaderTimeout != 3*time.Second ||
+		config.ConfirmationDepth != 18 ||
+		config.MaxReorgDepth != 96 {
 		t.Fatalf("unexpected overrides: %+v", config)
 	}
 }
@@ -108,6 +118,8 @@ func TestLoadConfigRejectsInvalidValues(t *testing.T) {
 		{name: "poll zero", key: "POLL_INTERVAL", value: "0s", want: "POLL_INTERVAL must be greater than zero"},
 		{name: "shutdown negative", key: "SHUTDOWN_TIMEOUT", value: "-1s", want: "SHUTDOWN_TIMEOUT must be greater than zero"},
 		{name: "read header zero", key: "READ_HEADER_TIMEOUT", value: "0s", want: "READ_HEADER_TIMEOUT must be greater than zero"},
+		{name: "confirmation syntax", key: "CONFIRMATION_DEPTH", value: "many", want: "parse CONFIRMATION_DEPTH"},
+		{name: "max reorg zero", key: "MAX_REORG_DEPTH", value: "0", want: "MAX_REORG_DEPTH must be greater than zero"},
 	}
 
 	for _, test := range tests {

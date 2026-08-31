@@ -3,6 +3,7 @@ package main
 type BlockTransferIndex struct {
 	BlockNumber uint64
 	BlockHash   BlockHash
+	ParentHash  BlockHash
 	Transfers   []ERC20Transfer
 }
 

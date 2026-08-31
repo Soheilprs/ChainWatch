@@ -17,8 +17,8 @@ func TestPostgresBlockPersistenceIsAtomicAndIdempotent(t *testing.T) {
 
 	const checkpointName = "test_atomic_block_success"
 	const transactionHash = "0xtest-atomic-block-success"
-	cleanupBlockPersistenceData(t, pool, checkpointName, transactionHash)
-	defer cleanupBlockPersistenceData(t, pool, checkpointName, transactionHash)
+	cleanupBlockPersistenceData(t, pool, checkpointName, transactionHash, 710001)
+	defer cleanupBlockPersistenceData(t, pool, checkpointName, transactionHash, 710001)
 
 	persistence := NewPostgresBlockPersistence(pool, checkpointName)
 	index := atomicTestBlockIndex(710001, "0xatomic-success", transactionHash)
@@ -59,8 +59,8 @@ func TestPostgresBlockPersistenceRollsBackTransfersWhenCheckpointFails(t *testin
 
 	const checkpointName = "test_atomic_block_rollback"
 	const transactionHash = "0xtest-atomic-block-rollback"
-	cleanupBlockPersistenceData(t, pool, checkpointName, transactionHash)
-	defer cleanupBlockPersistenceData(t, pool, checkpointName, transactionHash)
+	cleanupBlockPersistenceData(t, pool, checkpointName, transactionHash, 710002)
+	defer cleanupBlockPersistenceData(t, pool, checkpointName, transactionHash, 710002)
 
 	injectedErr := errors.New("injected failure before checkpoint")
 	persistence := NewPostgresBlockPersistence(pool, checkpointName)
@@ -102,6 +102,18 @@ func TestPostgresBlockPersistenceRollsBackTransfersWhenCheckpointFails(t *testin
 	if checkpointCount != 0 {
 		t.Fatalf("checkpoint count after rollback = %d, want 0", checkpointCount)
 	}
+
+	var historyCount int
+	if err := pool.QueryRow(
+		context.Background(),
+		"SELECT COUNT(*) FROM indexed_blocks WHERE block_number = $1",
+		710002,
+	).Scan(&historyCount); err != nil {
+		t.Fatalf("count block history after rollback: %v", err)
+	}
+	if historyCount != 0 {
+		t.Fatalf("block history count after rollback = %d, want 0", historyCount)
+	}
 }
 
 func openBlockPersistenceTestPool(t *testing.T) *pgxpool.Pool {
@@ -123,6 +135,7 @@ func cleanupBlockPersistenceData(
 	pool *pgxpool.Pool,
 	checkpointName string,
 	transactionHash string,
+	blockNumber uint64,
 ) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -138,7 +151,12 @@ func cleanupBlockPersistenceData(
 		"DELETE FROM checkpoints WHERE name = $1",
 		checkpointName,
 	)
-	if err := errors.Join(transferErr, checkpointErr); err != nil {
+	_, historyErr := pool.Exec(
+		ctx,
+		"DELETE FROM indexed_blocks WHERE block_number = $1",
+		int64(blockNumber),
+	)
+	if err := errors.Join(transferErr, checkpointErr, historyErr); err != nil {
 		t.Errorf("clean atomic persistence test data: %v", err)
 	}
 }

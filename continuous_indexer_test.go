@@ -89,6 +89,7 @@ func TestContinuousIndexerRunCycle(
 		rangeIndexer,
 		100,
 		time.Second,
+		0,
 	)
 
 	results, err := indexer.RunCycle(
@@ -207,6 +208,7 @@ func TestContinuousIndexerRunCycleResumes(
 		rangeIndexer,
 		100,
 		time.Second,
+		0,
 	)
 
 	results, err := indexer.RunCycle(
@@ -319,6 +321,7 @@ func TestContinuousIndexerStopsOnContextCancellation(
 		rangeIndexer,
 		100,
 		time.Hour,
+		0,
 	)
 
 	ctx, cancel :=
@@ -344,5 +347,40 @@ func TestContinuousIndexerStopsOnContextCancellation(
 			"expected graceful shutdown, got %v",
 			err,
 		)
+	}
+}
+
+func TestContinuousIndexerRespectsConfirmationDepth(t *testing.T) {
+	blockClient := &MockTransferBlockClient{
+		Blocks: map[uint64]ObservedBlock{
+			100: {Number: 100, Hash: "0x100"},
+			101: {Number: 101, Hash: "0x101"},
+			102: {Number: 102, Hash: "0x102"},
+		},
+		Indexes: map[uint64]BlockTransferIndex{
+			100: {BlockNumber: 100, BlockHash: "0x100"},
+			101: {BlockNumber: 101, BlockHash: "0x101"},
+			102: {BlockNumber: 102, BlockHash: "0x102"},
+		},
+	}
+	client := &MockContinuousTransferClient{
+		MockTransferBlockClient: blockClient,
+		LatestBlock:             ObservedBlock{Number: 105, Hash: "0x105"},
+	}
+	persistence := NewMemoryCheckpointStore()
+	indexer := NewContinuousIndexer(
+		client,
+		NewSequentialIndexer(client, persistence),
+		100,
+		time.Second,
+		3,
+	)
+
+	results, err := indexer.RunCycle(context.Background())
+	if err != nil {
+		t.Fatalf("run confirmed cycle: %v", err)
+	}
+	if len(results) != 3 || results[len(results)-1].BlockNumber != 102 {
+		t.Fatalf("unexpected confirmed results: %+v", results)
 	}
 }

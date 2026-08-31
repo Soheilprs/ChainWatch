@@ -47,7 +47,14 @@ func RunApplication(ctx context.Context, config Config, logger *slog.Logger) err
 	tokenMetadataStore := NewPostgresTokenMetadataStore(pool)
 	tokenMetadataService := NewTokenMetadataService(client, tokenMetadataStore)
 
-	startBlock, err := determineStartBlock(ctx, client, persistence, logger)
+	startBlock, err := determineStartBlock(
+		ctx,
+		client,
+		persistence,
+		logger,
+		config.ConfirmationDepth,
+		config.MaxReorgDepth,
+	)
 	if err != nil {
 		return err
 	}
@@ -62,6 +69,7 @@ func RunApplication(ctx context.Context, config Config, logger *slog.Logger) err
 		rangeIndexer,
 		startBlock,
 		config.PollInterval,
+		config.ConfirmationDepth,
 	)
 	api := NewHTTPServerWithObservability(
 		transferReader,
@@ -131,21 +139,40 @@ func RunApplication(ctx context.Context, config Config, logger *slog.Logger) err
 
 func determineStartBlock(
 	ctx context.Context,
-	client LatestObservedBlockClient,
-	persistence BlockPersistence,
+	client interface {
+		LatestObservedBlockClient
+		CanonicalBlockClient
+	},
+	persistence ReorgPersistence,
 	logger *slog.Logger,
+	confirmationDepth uint64,
+	maxReorgDepth uint64,
 ) (uint64, error) {
-	checkpoint, exists, err := persistence.Load(ctx)
+	reorgResult, err := NewReorgManager(
+		client,
+		persistence,
+		maxReorgDepth,
+	).Reconcile(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("load checkpoint: %w", err)
+		return 0, fmt.Errorf("reconcile Ethereum chain: %w", err)
 	}
 
-	if exists {
-		startBlock := checkpoint.Number + 1
+	if reorgResult.ReorgDetected {
+		logger.WarnContext(
+			ctx,
+			"Ethereum reorg rolled back",
+			"previousCheckpoint", reorgResult.PreviousCheckpoint.Number,
+			"commonAncestor", reorgResult.Checkpoint.Number,
+			"commonAncestorHash", string(reorgResult.Checkpoint.Hash),
+		)
+	}
+
+	if reorgResult.Exists {
+		startBlock := reorgResult.Checkpoint.Number + 1
 		logger.InfoContext(
 			ctx,
 			"resuming from checkpoint",
-			"checkpoint", checkpoint.Number,
+			"checkpoint", reorgResult.Checkpoint.Number,
 			"startBlock", startBlock,
 		)
 		return startBlock, nil
@@ -155,11 +182,16 @@ func determineStartBlock(
 	if err != nil {
 		return 0, fmt.Errorf("fetch latest Ethereum block: %w", err)
 	}
+	startBlock := uint64(0)
+	if latestBlock.Number >= confirmationDepth {
+		startBlock = latestBlock.Number - confirmationDepth
+	}
 	logger.InfoContext(
 		ctx,
-		"starting from latest block",
-		"startBlock", latestBlock.Number,
+		"starting from latest finalized block",
+		"startBlock", startBlock,
+		"confirmationDepth", confirmationDepth,
 	)
 
-	return latestBlock.Number, nil
+	return startBlock, nil
 }

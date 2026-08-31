@@ -15,6 +15,7 @@ type ObservedTransaction struct {
 type ObservedBlock struct {
 	Number       uint64
 	Hash         BlockHash
+	ParentHash   BlockHash
 	Timestamp    uint64
 	Transactions []ObservedTransaction
 }

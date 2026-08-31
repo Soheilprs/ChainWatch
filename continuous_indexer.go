@@ -23,10 +23,11 @@ type IndexedBlockHandler func(
 )
 
 type ContinuousIndexer struct {
-	client       LatestObservedBlockClient
-	indexer      RangeIndexer
-	startBlock   uint64
-	pollInterval time.Duration
+	client            LatestObservedBlockClient
+	indexer           RangeIndexer
+	startBlock        uint64
+	pollInterval      time.Duration
+	confirmationDepth uint64
 }
 
 func NewContinuousIndexer(
@@ -34,12 +35,14 @@ func NewContinuousIndexer(
 	indexer RangeIndexer,
 	startBlock uint64,
 	pollInterval time.Duration,
+	confirmationDepth uint64,
 ) *ContinuousIndexer {
 	return &ContinuousIndexer{
-		client:       client,
-		indexer:      indexer,
-		startBlock:   startBlock,
-		pollInterval: pollInterval,
+		client:            client,
+		indexer:           indexer,
+		startBlock:        startBlock,
+		pollInterval:      pollInterval,
+		confirmationDepth: confirmationDepth,
 	}
 }
 
@@ -56,16 +59,24 @@ func (c *ContinuousIndexer) RunCycle(
 		)
 	}
 
+	if latestBlock.Number < c.confirmationDepth {
+		return []BlockTransferIndex{}, nil
+	}
+	indexThrough := latestBlock.Number - c.confirmationDepth
+	if c.startBlock > indexThrough {
+		return []BlockTransferIndex{}, nil
+	}
+
 	indexes, err := c.indexer.IndexRange(
 		ctx,
 		c.startBlock,
-		latestBlock.Number,
+		indexThrough,
 	)
 
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to index through block %d: %w",
-			latestBlock.Number,
+			indexThrough,
 			err,
 		)
 	}

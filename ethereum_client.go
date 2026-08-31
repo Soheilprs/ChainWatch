@@ -254,6 +254,7 @@ func (e *EthereumClient) GetERC20TransfersByBlock(
 	return BlockTransferIndex{
 		BlockNumber: block.Number,
 		BlockHash:   block.Hash,
+		ParentHash:  block.ParentHash,
 		Transfers:   transfers,
 	}, nil
 }
@@ -323,6 +324,9 @@ func (e *EthereumClient) observedBlockFromEthereumBlock(
 		Number: block.NumberU64(),
 		Hash: BlockHash(
 			block.Hash().Hex(),
+		),
+		ParentHash: BlockHash(
+			block.ParentHash().Hex(),
 		),
 		Timestamp:    block.Time(),
 		Transactions: transactions,

@@ -413,3 +413,28 @@ func TestSequentialIndexerDoesNotAdvanceCheckpointOnFailure(
 		)
 	}
 }
+
+func TestSequentialIndexerStopsOnParentHashMismatch(t *testing.T) {
+	client := &MockTransferBlockClient{
+		Blocks: map[uint64]ObservedBlock{
+			101: {Number: 101, Hash: "0x101b", ParentHash: "0xwrong"},
+		},
+		Indexes: map[uint64]BlockTransferIndex{
+			101: {BlockNumber: 101, BlockHash: "0x101b", ParentHash: "0xwrong"},
+		},
+	}
+	persistence := NewMemoryCheckpointStore()
+	ctx := context.Background()
+	if err := persistence.Save(ctx, BlockCheckpoint{Number: 100, Hash: "0x100a"}); err != nil {
+		t.Fatalf("seed checkpoint: %v", err)
+	}
+
+	_, err := NewSequentialIndexer(client, persistence).IndexRange(ctx, 100, 101)
+	if !errors.Is(err, ErrChainReorg) {
+		t.Fatalf("expected chain reorg error, got %v", err)
+	}
+	checkpoint, _, loadErr := persistence.Load(ctx)
+	if loadErr != nil || checkpoint.Number != 100 || checkpoint.Hash != "0x100a" {
+		t.Fatalf("checkpoint advanced after reorg: %+v err=%v", checkpoint, loadErr)
+	}
+}
