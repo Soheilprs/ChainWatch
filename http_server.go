@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 )
@@ -11,16 +13,57 @@ import (
 type HTTPServer struct {
 	transferReader        TransferReader
 	tokenMetadataProvider TokenMetadataProvider
+
+	logger  *slog.Logger
+	metrics *Metrics
 }
 
 func NewHTTPServer(
 	transferReader TransferReader,
 	tokenMetadataProvider TokenMetadataProvider,
 ) *HTTPServer {
+	return NewHTTPServerWithObservability(
+		transferReader,
+		tokenMetadataProvider,
+		slog.New(
+			slog.NewTextHandler(
+				io.Discard,
+				nil,
+			),
+		),
+		NewMetrics(),
+	)
+}
+
+func NewHTTPServerWithObservability(
+	transferReader TransferReader,
+	tokenMetadataProvider TokenMetadataProvider,
+	logger *slog.Logger,
+	metrics *Metrics,
+) *HTTPServer {
+	if logger == nil {
+		logger =
+			slog.New(
+				slog.NewTextHandler(
+					io.Discard,
+					nil,
+				),
+			)
+	}
+
+	if metrics == nil {
+		metrics =
+			NewMetrics()
+	}
+
 	return &HTTPServer{
 		transferReader: transferReader,
 
 		tokenMetadataProvider: tokenMetadataProvider,
+
+		logger: logger,
+
+		metrics: metrics,
 	}
 }
 
@@ -38,7 +81,16 @@ func (s *HTTPServer) Handler() http.Handler {
 		s.handleTransfers,
 	)
 
-	return mux
+	mux.HandleFunc(
+		"/metrics",
+		s.handleMetrics,
+	)
+
+	return observabilityMiddleware(
+		s.logger,
+		s.metrics,
+		mux,
+	)
 }
 
 func (s *HTTPServer) handleHealth(
@@ -62,6 +114,37 @@ func (s *HTTPServer) handleHealth(
 			"status": "ok",
 		},
 	)
+}
+
+func (s *HTTPServer) handleMetrics(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodGet {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+
+		return
+	}
+
+	w.Header().Set(
+		"Content-Type",
+		"text/plain; version=0.0.4; charset=utf-8",
+	)
+
+	if err :=
+		s.metrics.WritePrometheus(w); err != nil {
+
+		s.logger.ErrorContext(
+			r.Context(),
+			"failed to write metrics",
+			"error",
+			err,
+		)
+	}
 }
 
 func (s *HTTPServer) handleTransfers(
@@ -98,6 +181,13 @@ func (s *HTTPServer) handleTransfers(
 		)
 
 	if err != nil {
+		s.logger.ErrorContext(
+			r.Context(),
+			"failed to load transfers",
+			"error",
+			err,
+		)
+
 		http.Error(
 			w,
 			"failed to load transfers",
@@ -128,7 +218,21 @@ func (s *HTTPServer) handleTransfers(
 						transfer.Token,
 					)
 
-			if err == nil {
+			if err != nil {
+				s.metrics.
+					RecordTokenMetadataError()
+
+				s.logger.WarnContext(
+					r.Context(),
+					"token metadata unavailable",
+					"token",
+					string(
+						transfer.Token,
+					),
+					"error",
+					err,
+				)
+			} else {
 				enrichAPITransferWithMetadata(
 					&apiTransfer,
 					transfer,
@@ -152,6 +256,13 @@ func (s *HTTPServer) handleTransfers(
 			)
 
 		if err != nil {
+			s.logger.ErrorContext(
+				r.Context(),
+				"failed to encode pagination cursor",
+				"error",
+				err,
+			)
+
 			http.Error(
 				w,
 				"failed to encode pagination cursor",

@@ -4,10 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 type MockTransferReader struct {
@@ -978,6 +983,379 @@ func TestHTTPServerStillReturnsTransferWhenMetadataFails(
 			"expected raw value 123, got %s",
 			page.Data[0].
 				Value,
+		)
+	}
+}
+
+func TestHTTPServerMetricsEndpoint(
+	t *testing.T,
+) {
+	reader :=
+		&MockTransferReader{}
+
+	metrics :=
+		NewMetrics()
+
+	metrics.RecordIndexedBlock(
+		25,
+	)
+
+	logger :=
+		slog.New(
+			slog.NewTextHandler(
+				io.Discard,
+				nil,
+			),
+		)
+
+	server :=
+		NewHTTPServerWithObservability(
+			reader,
+			nil,
+			logger,
+			metrics,
+		)
+
+	request :=
+		httptest.NewRequest(
+			http.MethodGet,
+			"/metrics",
+			nil,
+		)
+
+	response :=
+		httptest.NewRecorder()
+
+	server.Handler().
+		ServeHTTP(
+			response,
+			request,
+		)
+
+	if response.Code !=
+		http.StatusOK {
+
+		t.Fatalf(
+			"expected status 200, got %d",
+			response.Code,
+		)
+	}
+
+	body :=
+		response.Body.String()
+
+	if !strings.Contains(
+		body,
+		"chainwatch_indexed_blocks_total 1",
+	) {
+		t.Fatalf(
+			"expected indexed block metric, got %s",
+			body,
+		)
+	}
+
+	if !strings.Contains(
+		body,
+		"chainwatch_indexed_transfers_total 25",
+	) {
+		t.Fatalf(
+			"expected indexed transfer metric, got %s",
+			body,
+		)
+	}
+}
+
+func TestHTTPMiddlewareRecordsRequest(
+	t *testing.T,
+) {
+	reader :=
+		&MockTransferReader{}
+
+	metrics :=
+		NewMetrics()
+
+	logger :=
+		slog.New(
+			slog.NewTextHandler(
+				io.Discard,
+				nil,
+			),
+		)
+
+	server :=
+		NewHTTPServerWithObservability(
+			reader,
+			nil,
+			logger,
+			metrics,
+		)
+
+	request :=
+		httptest.NewRequest(
+			http.MethodGet,
+			"/health",
+			nil,
+		)
+
+	response :=
+		httptest.NewRecorder()
+
+	server.Handler().
+		ServeHTTP(
+			response,
+			request,
+		)
+
+	snapshot :=
+		metrics.Snapshot()
+
+	if snapshot.HTTPRequests != 1 {
+		t.Fatalf(
+			"expected 1 HTTP request, got %d",
+			snapshot.HTTPRequests,
+		)
+	}
+
+	if snapshot.HTTPErrors != 0 {
+		t.Fatalf(
+			"expected 0 HTTP errors, got %d",
+			snapshot.HTTPErrors,
+		)
+	}
+}
+
+func TestHTTPMiddlewareRecordsServerError(
+	t *testing.T,
+) {
+	reader :=
+		&MockTransferReader{
+			Err: errors.New(
+				"database failure",
+			),
+		}
+
+	metrics :=
+		NewMetrics()
+
+	logger :=
+		slog.New(
+			slog.NewTextHandler(
+				io.Discard,
+				nil,
+			),
+		)
+
+	server :=
+		NewHTTPServerWithObservability(
+			reader,
+			nil,
+			logger,
+			metrics,
+		)
+
+	request :=
+		httptest.NewRequest(
+			http.MethodGet,
+			"/transfers",
+			nil,
+		)
+
+	response :=
+		httptest.NewRecorder()
+
+	server.Handler().
+		ServeHTTP(
+			response,
+			request,
+		)
+
+	if response.Code !=
+		http.StatusInternalServerError {
+
+		t.Fatalf(
+			"expected status 500, got %d",
+			response.Code,
+		)
+	}
+
+	snapshot :=
+		metrics.Snapshot()
+
+	if snapshot.HTTPRequests != 1 {
+		t.Fatalf(
+			"expected 1 request, got %d",
+			snapshot.HTTPRequests,
+		)
+	}
+
+	if snapshot.HTTPErrors != 1 {
+		t.Fatalf(
+			"expected 1 HTTP error, got %d",
+			snapshot.HTTPErrors,
+		)
+	}
+}
+
+func TestHTTPServerRecordsMetadataFailure(
+	t *testing.T,
+) {
+	reader :=
+		&MockTransferReader{
+			Page: TransferPage{
+				Transfers: []StoredERC20Transfer{
+					{
+						BlockNumber: 100,
+
+						BlockHash: "0xblock",
+
+						TransactionHash: "0xtx",
+
+						LogIndex: 1,
+
+						Token: "0x1111111111111111111111111111111111111111",
+
+						From: "0xfrom",
+
+						To: "0xto",
+
+						Value: big.NewInt(
+							100,
+						),
+					},
+				},
+			},
+		}
+
+	metadata :=
+		&MockTokenMetadataProvider{
+			Err: errors.New(
+				"metadata unavailable",
+			),
+		}
+
+	metrics :=
+		NewMetrics()
+
+	logger :=
+		slog.New(
+			slog.NewTextHandler(
+				io.Discard,
+				nil,
+			),
+		)
+
+	server :=
+		NewHTTPServerWithObservability(
+			reader,
+			metadata,
+			logger,
+			metrics,
+		)
+
+	request :=
+		httptest.NewRequest(
+			http.MethodGet,
+			"/transfers",
+			nil,
+		)
+
+	response :=
+		httptest.NewRecorder()
+
+	server.Handler().
+		ServeHTTP(
+			response,
+			request,
+		)
+
+	if response.Code !=
+		http.StatusOK {
+
+		t.Fatalf(
+			"expected status 200, got %d",
+			response.Code,
+		)
+	}
+
+	snapshot :=
+		metrics.Snapshot()
+
+	if snapshot.TokenMetadataErrors !=
+		1 {
+
+		t.Fatalf(
+			"expected 1 metadata error, got %d",
+			snapshot.TokenMetadataErrors,
+		)
+	}
+}
+
+func TestMetricsConcurrentUpdates(
+	t *testing.T,
+) {
+	metrics :=
+		NewMetrics()
+
+	const goroutines = 100
+
+	var waitGroup sync.WaitGroup
+
+	waitGroup.Add(
+		goroutines,
+	)
+
+	for range goroutines {
+		go func() {
+			defer waitGroup.Done()
+
+			metrics.ObserveHTTPRequest(
+				200,
+				time.Millisecond,
+			)
+
+			metrics.RecordIndexedBlock(
+				10,
+			)
+		}()
+	}
+
+	waitGroup.Wait()
+
+	snapshot :=
+		metrics.Snapshot()
+
+	if snapshot.HTTPRequests !=
+		goroutines {
+
+		t.Fatalf(
+			"expected %d HTTP requests, got %d",
+			goroutines,
+			snapshot.HTTPRequests,
+		)
+	}
+
+	if snapshot.IndexedBlocks !=
+		goroutines {
+
+		t.Fatalf(
+			"expected %d blocks, got %d",
+			goroutines,
+			snapshot.IndexedBlocks,
+		)
+	}
+
+	expectedTransfers :=
+		uint64(
+			goroutines * 10,
+		)
+
+	if snapshot.IndexedTransfers !=
+		expectedTransfers {
+
+		t.Fatalf(
+			"expected %d transfers, got %d",
+			expectedTransfers,
+			snapshot.IndexedTransfers,
 		)
 	}
 }

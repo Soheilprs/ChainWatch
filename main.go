@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,13 +14,31 @@ import (
 )
 
 func main() {
+	logger :=
+		slog.New(
+			slog.NewJSONHandler(
+				os.Stdout,
+				&slog.HandlerOptions{
+					Level: slog.LevelInfo,
+				},
+			),
+		)
+
+	slog.SetDefault(
+		logger,
+	)
+
+	metrics :=
+		NewMetrics()
+
 	rpcURL :=
 		os.Getenv("ETH_RPC_URL")
 
 	if rpcURL == "" {
-		fmt.Println(
+		logger.Error(
 			"ETH_RPC_URL is not set",
 		)
+
 		return
 	}
 
@@ -28,9 +46,10 @@ func main() {
 		os.Getenv("DATABASE_URL")
 
 	if databaseURL == "" {
-		fmt.Println(
+		logger.Error(
 			"DATABASE_URL is not set",
 		)
+
 		return
 	}
 
@@ -50,10 +69,12 @@ func main() {
 		)
 
 	if err != nil {
-		fmt.Println(
-			"Failed to create Ethereum client:",
+		logger.Error(
+			"failed to create Ethereum client",
+			"error",
 			err,
 		)
+
 		return
 	}
 
@@ -66,10 +87,12 @@ func main() {
 		)
 
 	if err != nil {
-		fmt.Println(
-			"Failed to create PostgreSQL pool:",
+		logger.Error(
+			"failed to create PostgreSQL pool",
+			"error",
 			err,
 		)
+
 		return
 	}
 
@@ -78,16 +101,17 @@ func main() {
 	if err :=
 		pool.Ping(ctx); err != nil {
 
-		fmt.Println(
-			"Failed to connect to PostgreSQL:",
+		logger.Error(
+			"failed to connect to PostgreSQL",
+			"error",
 			err,
 		)
 
 		return
 	}
 
-	fmt.Println(
-		"Connected to PostgreSQL",
+	logger.Info(
+		"connected to PostgreSQL",
 	)
 
 	checkpoints :=
@@ -121,10 +145,12 @@ func main() {
 		checkpoints.Load(ctx)
 
 	if err != nil {
-		fmt.Println(
-			"Failed to load checkpoint:",
+		logger.Error(
+			"failed to load checkpoint",
+			"error",
 			err,
 		)
+
 		return
 	}
 
@@ -134,9 +160,12 @@ func main() {
 		startBlock =
 			checkpoint.Number + 1
 
-		fmt.Println(
-			"Resuming after checkpoint:",
+		logger.Info(
+			"resuming from checkpoint",
+			"checkpoint",
 			checkpoint.Number,
+			"startBlock",
+			startBlock,
 		)
 	} else {
 		latestBlock, err :=
@@ -145,22 +174,21 @@ func main() {
 			)
 
 		if err != nil {
-			fmt.Println(
-				"Failed to fetch latest Ethereum block:",
+			logger.Error(
+				"failed to fetch latest Ethereum block",
+				"error",
 				err,
 			)
+
 			return
 		}
 
 		startBlock =
 			latestBlock.Number
 
-		fmt.Println(
-			"No checkpoint found",
-		)
-
-		fmt.Println(
-			"Starting from latest block:",
+		logger.Info(
+			"starting from latest block",
+			"startBlock",
 			startBlock,
 		)
 	}
@@ -184,9 +212,11 @@ func main() {
 		)
 
 	api :=
-		NewHTTPServer(
+		NewHTTPServerWithObservability(
 			transferReader,
 			tokenMetadataService,
+			logger,
+			metrics,
 		)
 
 	server :=
@@ -194,23 +224,16 @@ func main() {
 			Addr: ":8080",
 
 			Handler: api.Handler(),
+
+			ReadHeaderTimeout: 5 * time.Second,
 		}
 
-	fmt.Println(
+	logger.Info(
 		"ChainWatch started",
-	)
-
-	fmt.Println(
-		"Workers:",
+		"workers",
 		workerCount,
-	)
-
-	fmt.Println(
-		"API listening on :8080",
-	)
-
-	fmt.Println(
-		"Press Ctrl+C to stop",
+		"httpAddress",
+		server.Addr,
 	)
 
 	errCh :=
@@ -225,9 +248,19 @@ func main() {
 			func(
 				index BlockTransferIndex,
 			) {
-				fmt.Printf(
-					"Indexed block %d: %d ERC-20 transfers\n",
+				metrics.RecordIndexedBlock(
+					index.TransferCount(),
+				)
+
+				logger.Info(
+					"indexed block",
+					"blockNumber",
 					index.BlockNumber,
+					"blockHash",
+					string(
+						index.BlockHash,
+					),
+					"transfers",
 					index.TransferCount(),
 				)
 			},
@@ -251,10 +284,17 @@ func main() {
 	select {
 	case <-ctx.Done():
 
+		logger.Info(
+			"shutdown signal received",
+		)
+
 	case err := <-errCh:
 		if err != nil {
-			fmt.Println(
-				"Service stopped with error:",
+			metrics.RecordIndexerError()
+
+			logger.Error(
+				"service stopped with error",
+				"error",
 				err,
 			)
 
@@ -275,13 +315,14 @@ func main() {
 			shutdownCtx,
 		); err != nil {
 
-		fmt.Println(
-			"Failed to shut down HTTP server:",
+		logger.Error(
+			"failed to shut down HTTP server",
+			"error",
 			err,
 		)
 	}
 
-	fmt.Println(
+	logger.Info(
 		"ChainWatch stopped cleanly",
 	)
 }
