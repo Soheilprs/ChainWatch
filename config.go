@@ -1,0 +1,136 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+)
+
+const (
+	defaultHTTPAddress       = ":8080"
+	defaultWorkerCount       = 3
+	defaultPollInterval      = 4 * time.Second
+	defaultShutdownTimeout   = 5 * time.Second
+	defaultReadHeaderTimeout = 5 * time.Second
+)
+
+// Config contains all runtime settings needed to start ChainWatch.
+type Config struct {
+	EthereumRPCURL    string
+	DatabaseURL       string
+	HTTPAddress       string
+	WorkerCount       int
+	PollInterval      time.Duration
+	ShutdownTimeout   time.Duration
+	ReadHeaderTimeout time.Duration
+}
+
+// LoadConfig reads and validates ChainWatch configuration from the process
+// environment.
+func LoadConfig() (Config, error) {
+	return loadConfig(os.LookupEnv)
+}
+
+type environmentLookup func(string) (string, bool)
+
+func loadConfig(lookup environmentLookup) (Config, error) {
+	if lookup == nil {
+		return Config{}, errors.New("environment lookup is required")
+	}
+
+	config := Config{
+		HTTPAddress:       defaultHTTPAddress,
+		WorkerCount:       defaultWorkerCount,
+		PollInterval:      defaultPollInterval,
+		ShutdownTimeout:   defaultShutdownTimeout,
+		ReadHeaderTimeout: defaultReadHeaderTimeout,
+	}
+
+	var err error
+	if config.EthereumRPCURL, err = requiredEnvironment(lookup, "ETH_RPC_URL"); err != nil {
+		return Config{}, err
+	}
+	if config.DatabaseURL, err = requiredEnvironment(lookup, "DATABASE_URL"); err != nil {
+		return Config{}, err
+	}
+
+	if value, exists := optionalEnvironment(lookup, "HTTP_ADDRESS"); exists {
+		config.HTTPAddress = value
+	}
+	if value, exists := optionalEnvironment(lookup, "WORKER_COUNT"); exists {
+		config.WorkerCount, err = strconv.Atoi(value)
+		if err != nil {
+			return Config{}, fmt.Errorf("parse WORKER_COUNT: %w", err)
+		}
+	}
+	if config.PollInterval, err = durationEnvironment(lookup, "POLL_INTERVAL", config.PollInterval); err != nil {
+		return Config{}, err
+	}
+	if config.ShutdownTimeout, err = durationEnvironment(lookup, "SHUTDOWN_TIMEOUT", config.ShutdownTimeout); err != nil {
+		return Config{}, err
+	}
+	if config.ReadHeaderTimeout, err = durationEnvironment(lookup, "READ_HEADER_TIMEOUT", config.ReadHeaderTimeout); err != nil {
+		return Config{}, err
+	}
+
+	if err := config.Validate(); err != nil {
+		return Config{}, err
+	}
+
+	return config, nil
+}
+
+func (c Config) Validate() error {
+	switch {
+	case strings.TrimSpace(c.EthereumRPCURL) == "":
+		return errors.New("ETH_RPC_URL is required")
+	case strings.TrimSpace(c.DatabaseURL) == "":
+		return errors.New("DATABASE_URL is required")
+	case strings.TrimSpace(c.HTTPAddress) == "":
+		return errors.New("HTTP_ADDRESS must not be empty")
+	case c.WorkerCount <= 0:
+		return errors.New("WORKER_COUNT must be greater than zero")
+	case c.PollInterval <= 0:
+		return errors.New("POLL_INTERVAL must be greater than zero")
+	case c.ShutdownTimeout <= 0:
+		return errors.New("SHUTDOWN_TIMEOUT must be greater than zero")
+	case c.ReadHeaderTimeout <= 0:
+		return errors.New("READ_HEADER_TIMEOUT must be greater than zero")
+	default:
+		return nil
+	}
+}
+
+func requiredEnvironment(lookup environmentLookup, name string) (string, error) {
+	value, exists := optionalEnvironment(lookup, name)
+	if !exists {
+		return "", fmt.Errorf("%s is required", name)
+	}
+	return value, nil
+}
+
+func optionalEnvironment(lookup environmentLookup, name string) (string, bool) {
+	value, exists := lookup(name)
+	value = strings.TrimSpace(value)
+	return value, exists && value != ""
+}
+
+func durationEnvironment(
+	lookup environmentLookup,
+	name string,
+	defaultValue time.Duration,
+) (time.Duration, error) {
+	value, exists := optionalEnvironment(lookup, name)
+	if !exists {
+		return defaultValue, nil
+	}
+
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("parse %s: %w", name, err)
+	}
+	return duration, nil
+}
