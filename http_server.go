@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 type HTTPServer struct {
@@ -303,9 +305,12 @@ func parseTransferQuery(
 
 	if rawToken :=
 		values.Get("token"); rawToken != "" {
+		if !common.IsHexAddress(rawToken) {
+			return TransferQuery{}, NewBadInputError("invalid token address", ErrInvalidTokenAddress)
+		}
 
 		token :=
-			Address(rawToken)
+			Address(common.HexToAddress(rawToken).Hex())
 
 		query.Token =
 			&token
@@ -313,9 +318,12 @@ func parseTransferQuery(
 
 	if rawAddress :=
 		values.Get("address"); rawAddress != "" {
+		if !common.IsHexAddress(rawAddress) {
+			return TransferQuery{}, NewBadInputError("invalid transfer address", ErrInvalidTokenAddress)
+		}
 
 		address :=
-			Address(rawAddress)
+			Address(common.HexToAddress(rawAddress).Hex())
 
 		query.Address =
 			&address

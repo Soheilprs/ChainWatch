@@ -167,8 +167,6 @@ func RunApplication(ctx context.Context, config Config, logger *slog.Logger) err
 
 	if runErr == nil {
 		logger.Info("ChainWatch stopped cleanly")
-	} else {
-		logger.Error("ChainWatch stopped with error", "error", runErr)
 	}
 	return runErr
 }

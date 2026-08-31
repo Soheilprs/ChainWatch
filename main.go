@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -17,10 +18,16 @@ func main() {
 	)
 	slog.SetDefault(logger)
 
+	if err := run(logger); err != nil {
+		logger.Error("ChainWatch stopped", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run(logger *slog.Logger) error {
 	config, err := LoadConfig()
 	if err != nil {
-		logger.Error("invalid configuration", "error", err)
-		return
+		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
 	ctx, stop := signal.NotifyContext(
@@ -30,7 +37,5 @@ func main() {
 	)
 	defer stop()
 
-	if err := RunApplication(ctx, config, logger); err != nil {
-		logger.Error("ChainWatch stopped", "error", err)
-	}
+	return RunApplication(ctx, config, logger)
 }

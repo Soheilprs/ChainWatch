@@ -337,6 +337,8 @@ func TestHTTPServerReturnsNextCursor(
 func TestHTTPServerParsesTransferFilters(
 	t *testing.T,
 ) {
+	token := "0x1111111111111111111111111111111111111111"
+	address := "0x2222222222222222222222222222222222222222"
 	reader :=
 		&MockTransferReader{}
 
@@ -349,7 +351,7 @@ func TestHTTPServerParsesTransferFilters(
 	request :=
 		httptest.NewRequest(
 			http.MethodGet,
-			"/transfers?block=123&token=0xtoken&address=0xwallet&limit=25",
+			"/transfers?block=123&token="+token+"&address="+address+"&limit=25",
 			nil,
 		)
 
@@ -397,10 +399,11 @@ func TestHTTPServerParsesTransferFilters(
 	}
 
 	if *reader.Query.Token !=
-		"0xtoken" {
+		Address(token) {
 
 		t.Fatalf(
-			"expected token 0xtoken, got %s",
+			"expected token %s, got %s",
+			token,
 			*reader.Query.Token,
 		)
 	}
@@ -414,10 +417,11 @@ func TestHTTPServerParsesTransferFilters(
 	}
 
 	if *reader.Query.Address !=
-		"0xwallet" {
+		Address(address) {
 
 		t.Fatalf(
-			"expected address 0xwallet, got %s",
+			"expected address %s, got %s",
+			address,
 			*reader.Query.Address,
 		)
 	}
@@ -427,6 +431,34 @@ func TestHTTPServerParsesTransferFilters(
 			"expected limit 25, got %d",
 			reader.Query.Limit,
 		)
+	}
+}
+
+func TestHTTPServerRejectsInvalidAddressFilters(t *testing.T) {
+	tests := []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{name: "token", query: "token=not-an-address", want: "invalid token address"},
+		{name: "wallet", query: "address=0xshort", want: "invalid transfer address"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := NewHTTPServer(&MockTransferReader{}, nil)
+			request := httptest.NewRequest(http.MethodGet, "/transfers?"+test.query, nil)
+			response := httptest.NewRecorder()
+
+			server.Handler().ServeHTTP(response, request)
+
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+			}
+			if !strings.Contains(response.Body.String(), test.want) {
+				t.Fatalf("body = %q, want safe message %q", response.Body.String(), test.want)
+			}
+		})
 	}
 }
 

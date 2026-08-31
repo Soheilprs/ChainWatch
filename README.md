@@ -2,6 +2,8 @@
 
 ChainWatch is an Ethereum ERC-20 transfer indexer and Go HTTP service backed by PostgreSQL.
 
+The [production review](docs/PRODUCTION_REVIEW.md) describes the final architecture, safety invariants, failure handling, current limits, scaling roadmap, and project-based interview exercises.
+
 ## Run with Docker Compose
 
 Copy the environment template and set `ETH_RPC_URL` to an Ethereum JSON-RPC endpoint:
