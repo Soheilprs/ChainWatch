@@ -99,7 +99,6 @@ func TestSequentialIndexerIndexesRange(
 	indexer := NewSequentialIndexer(
 		client,
 		checkpoints,
-		NewNoopBlockTransferStore(),
 	)
 
 	results, err := indexer.IndexRange(
@@ -212,7 +211,6 @@ func TestSequentialIndexerResumesFromCheckpoint(
 	indexer := NewSequentialIndexer(
 		client,
 		checkpoints,
-		NewNoopBlockTransferStore(),
 	)
 	results, err := indexer.IndexRange(
 		ctx,
@@ -343,7 +341,6 @@ func TestSequentialIndexerDoesNotAdvanceCheckpointOnFailure(
 	indexer := NewSequentialIndexer(
 		client,
 		checkpoints,
-		NewNoopBlockTransferStore(),
 	)
 
 	_, err = indexer.IndexRange(

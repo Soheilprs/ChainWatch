@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -78,6 +79,28 @@ func (s *PostgresCheckpointStore) Save(
 ) (err error) {
 	defer classifyDomainError(&err, ErrDatabase, "save checkpoint")
 
+	err = upsertCheckpoint(ctx, s.pool, s.name, checkpoint)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to save checkpoint %q: %w",
+			s.name,
+			err,
+		)
+	}
+
+	return nil
+}
+
+type postgresExecutor interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}
+
+func upsertCheckpoint(
+	ctx context.Context,
+	executor postgresExecutor,
+	name string,
+	checkpoint BlockCheckpoint,
+) error {
 	if checkpoint.Number > uint64(^uint64(0)>>1) {
 		return fmt.Errorf(
 			"checkpoint block number is too large for PostgreSQL BIGINT: %d",
@@ -85,7 +108,7 @@ func (s *PostgresCheckpointStore) Save(
 		)
 	}
 
-	_, err = s.pool.Exec(
+	_, err := executor.Exec(
 		ctx,
 		`
 		INSERT INTO checkpoints (
@@ -101,18 +124,10 @@ func (s *PostgresCheckpointStore) Save(
 			block_hash = EXCLUDED.block_hash,
 			updated_at = NOW()
 		`,
-		s.name,
+		name,
 		int64(checkpoint.Number),
 		string(checkpoint.Hash),
 	)
 
-	if err != nil {
-		return fmt.Errorf(
-			"failed to save checkpoint %q: %w",
-			s.name,
-			err,
-		)
-	}
-
-	return nil
+	return err
 }

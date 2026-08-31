@@ -19,8 +19,7 @@ type concurrentBlockResult struct {
 
 type ConcurrentRangeIndexer struct {
 	client      TransferBlockClient
-	checkpoints CheckpointStore
-	transfers   BlockTransferStore
+	persistence BlockPersistence
 	workerCount int
 }
 
@@ -28,14 +27,12 @@ var _ RangeIndexer = (*ConcurrentRangeIndexer)(nil)
 
 func NewConcurrentRangeIndexer(
 	client TransferBlockClient,
-	checkpoints CheckpointStore,
-	transfers BlockTransferStore,
+	persistence BlockPersistence,
 	workerCount int,
 ) *ConcurrentRangeIndexer {
 	return &ConcurrentRangeIndexer{
 		client:      client,
-		checkpoints: checkpoints,
-		transfers:   transfers,
+		persistence: persistence,
 		workerCount: workerCount,
 	}
 }
@@ -58,7 +55,7 @@ func (c *ConcurrentRangeIndexer) IndexRange(
 	nextBlock := startBlock
 
 	checkpoint, exists, err :=
-		c.checkpoints.Load(ctx)
+		c.persistence.Load(ctx)
 
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -176,38 +173,12 @@ func (c *ConcurrentRangeIndexer) IndexRange(
 					nextResult.err
 			}
 
-			err :=
-				c.transfers.SaveBlock(
-					ctx,
-					nextResult.index,
-				)
-
+			err := c.persistence.SaveIndexedBlock(ctx, nextResult.index)
 			if err != nil {
 				cancel()
 
 				return nil, fmt.Errorf(
-					"failed to save transfers for block %d: %w",
-					nextCommit,
-					err,
-				)
-			}
-
-			err =
-				c.checkpoints.Save(
-					ctx,
-					BlockCheckpoint{
-						Number: nextCommit,
-						Hash: nextResult.
-							index.
-							BlockHash,
-					},
-				)
-
-			if err != nil {
-				cancel()
-
-				return nil, fmt.Errorf(
-					"failed to save checkpoint for block %d: %w",
+					"failed to persist indexed block %d: %w",
 					nextCommit,
 					err,
 				)

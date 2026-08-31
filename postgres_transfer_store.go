@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -41,8 +42,26 @@ func (s *PostgresBlockTransferStore) SaveBlock(
 		_ = tx.Rollback(ctx)
 	}()
 
-	for _, transfer := range index.Transfers {
+	if err := insertBlockTransfers(ctx, tx, index); err != nil {
+		return err
+	}
 
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf(
+			"failed to commit transfer transaction: %w",
+			err,
+		)
+	}
+
+	return nil
+}
+
+func insertBlockTransfers(
+	ctx context.Context,
+	tx pgx.Tx,
+	index BlockTransferIndex,
+) error {
+	for _, transfer := range index.Transfers {
 		if transfer.Value == nil {
 			return fmt.Errorf(
 				"transfer %s log %d has nil value",
@@ -51,7 +70,7 @@ func (s *PostgresBlockTransferStore) SaveBlock(
 			)
 		}
 
-		_, err = tx.Exec(
+		_, err := tx.Exec(
 			ctx,
 			`
 			INSERT INTO erc20_transfers (
@@ -64,62 +83,27 @@ func (s *PostgresBlockTransferStore) SaveBlock(
 				to_address,
 				value
 			)
-			VALUES (
-				$1,
-				$2,
-				$3,
-				$4,
-				$5,
-				$6,
-				$7,
-				$8
-			)
-			ON CONFLICT (
-				transaction_hash,
-				log_index
-			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			ON CONFLICT (transaction_hash, log_index)
 			DO NOTHING
 			`,
-			string(
-				transfer.TransactionHash,
-			),
-			int64(
-				transfer.LogIndex,
-			),
-			int64(
-				index.BlockNumber,
-			),
-			string(
-				index.BlockHash,
-			),
-			string(
-				transfer.Token,
-			),
-			string(
-				transfer.From,
-			),
-			string(
-				transfer.To,
-			),
+			string(transfer.TransactionHash),
+			int64(transfer.LogIndex),
+			int64(index.BlockNumber),
+			string(index.BlockHash),
+			string(transfer.Token),
+			string(transfer.From),
+			string(transfer.To),
 			transfer.Value.String(),
 		)
-
 		if err != nil {
 			return fmt.Errorf(
-				"failed to save transfer %s log %d: %w",
+				"save transfer %s log %d: %w",
 				transfer.TransactionHash,
 				transfer.LogIndex,
 				err,
 			)
 		}
 	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf(
-			"failed to commit transfer transaction: %w",
-			err,
-		)
-	}
-
 	return nil
 }

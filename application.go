@@ -42,21 +42,19 @@ func RunApplication(ctx context.Context, config Config, logger *slog.Logger) err
 	}
 	logger.InfoContext(ctx, "connected to PostgreSQL")
 
-	checkpoints := NewPostgresCheckpointStore(pool, "ethereum_erc20")
-	transferStore := NewPostgresBlockTransferStore(pool)
+	persistence := NewPostgresBlockPersistence(pool, "ethereum_erc20")
 	transferReader := NewPostgresTransferReader(pool)
 	tokenMetadataStore := NewPostgresTokenMetadataStore(pool)
 	tokenMetadataService := NewTokenMetadataService(client, tokenMetadataStore)
 
-	startBlock, err := determineStartBlock(ctx, client, checkpoints, logger)
+	startBlock, err := determineStartBlock(ctx, client, persistence, logger)
 	if err != nil {
 		return err
 	}
 
 	rangeIndexer := NewConcurrentRangeIndexer(
 		client,
-		checkpoints,
-		transferStore,
+		persistence,
 		config.WorkerCount,
 	)
 	indexer := NewContinuousIndexer(
@@ -134,10 +132,10 @@ func RunApplication(ctx context.Context, config Config, logger *slog.Logger) err
 func determineStartBlock(
 	ctx context.Context,
 	client LatestObservedBlockClient,
-	checkpoints CheckpointStore,
+	persistence BlockPersistence,
 	logger *slog.Logger,
 ) (uint64, error) {
-	checkpoint, exists, err := checkpoints.Load(ctx)
+	checkpoint, exists, err := persistence.Load(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("load checkpoint: %w", err)
 	}

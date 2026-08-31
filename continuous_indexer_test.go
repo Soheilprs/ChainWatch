@@ -82,7 +82,6 @@ func TestContinuousIndexerRunCycle(
 		NewSequentialIndexer(
 			client,
 			checkpoints,
-			NewNoopBlockTransferStore(),
 		)
 
 	indexer := NewContinuousIndexer(
@@ -201,7 +200,6 @@ func TestContinuousIndexerRunCycleResumes(
 		NewSequentialIndexer(
 			client,
 			checkpoints,
-			NewNoopBlockTransferStore(),
 		)
 
 	indexer := NewContinuousIndexer(
@@ -314,7 +312,6 @@ func TestContinuousIndexerStopsOnContextCancellation(
 		NewSequentialIndexer(
 			client,
 			checkpoints,
-			NewNoopBlockTransferStore(),
 		)
 
 	indexer := NewContinuousIndexer(

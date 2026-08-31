@@ -24,21 +24,18 @@ type TransferBlockClient interface {
 
 type SequentialIndexer struct {
 	client      TransferBlockClient
-	checkpoints CheckpointStore
-	transfers   BlockTransferStore
+	persistence BlockPersistence
 }
 
 var _ RangeIndexer = (*SequentialIndexer)(nil)
 
 func NewSequentialIndexer(
 	client TransferBlockClient,
-	checkpoints CheckpointStore,
-	transfers BlockTransferStore,
+	persistence BlockPersistence,
 ) *SequentialIndexer {
 	return &SequentialIndexer{
 		client:      client,
-		checkpoints: checkpoints,
-		transfers:   transfers,
+		persistence: persistence,
 	}
 }
 
@@ -56,7 +53,7 @@ func (i *SequentialIndexer) IndexRange(
 	nextBlock := startBlock
 
 	checkpoint, exists, err :=
-		i.checkpoints.Load(ctx)
+		i.persistence.Load(ctx)
 
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -112,32 +109,10 @@ func (i *SequentialIndexer) IndexRange(
 			)
 		}
 
-		err =
-			i.transfers.SaveBlock(
-				ctx,
-				index,
-			)
-
+		err = i.persistence.SaveIndexedBlock(ctx, index)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"failed to save transfers for block %d: %w",
-				blockNumber,
-				err,
-			)
-		}
-
-		err =
-			i.checkpoints.Save(
-				ctx,
-				BlockCheckpoint{
-					Number: block.Number,
-					Hash:   block.Hash,
-				},
-			)
-
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to save checkpoint for block %d: %w",
+				"failed to persist indexed block %d: %w",
 				blockNumber,
 				err,
 			)
